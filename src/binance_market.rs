@@ -1,17 +1,17 @@
+use crate::utils::utility::display_contents;
+use crate::RsiTradingStrategy;
 use binance::model::KlineEvent;
 use binance::websockets::*;
 use std::cell::RefCell;
 use std::sync::atomic::AtomicBool;
-//use std::sync::atomic::
-use crate::utils::utility::display_contents;
 trait Market {
     fn open_websocket(&self);
 }
 
 pub struct Binance<'a> {
-    // close_prices: RefCell<Vec<f64>>,
     pair: &'a str,
     kline: &'a str,
+    closes: RefCell<Vec<f64>>,
 }
 
 impl<'a> Binance<'a> {
@@ -28,7 +28,7 @@ impl<'a> Binance<'a> {
         }
     }
 
-    pub fn create_kline_and_handle_websocket_event(binance: &'a Binance) -> WebSockets<'a> {
+    pub fn kline_websocket(binance: &'a Binance, in_position: &'a mut bool) -> WebSockets<'a> {
         let web_socket = WebSockets::new(move |event: WebsocketEvent| {
             if let WebsocketEvent::Kline(kline_event) = event {
                 //println!("candle Close at {} ", kline_event.kline.close);
@@ -36,58 +36,51 @@ impl<'a> Binance<'a> {
                     "Symbol: {}, high: {}, low: {}",
                     kline_event.kline.symbol, kline_event.kline.low, kline_event.kline.high
                 );
-                binance.process_klines(kline_event);
+                binance.store_final_close_prices(kline_event);
+                binance.start_trading(in_position);
             };
             Ok(())
         });
         web_socket
     }
 
-    pub fn process_klines(&self, kline_event: KlineEvent) {
-        let closes: &mut Vec<f64> = &mut Vec::new();
-        if kline_event.kline.is_final_bar == true {
-            println!("candle Close at {} ", kline_event.kline.close);
-            // self.close_prices
-            //     .borrow_mut()
-            //     .push(kline_event.kline.close.parse().unwrap());
-            // self.display_contents();
+    pub fn store_final_close_prices(&self, kline_event: KlineEvent) {
+        // if kline_event.kline.is_final_bar == true {
+        println!("candle Close at {} ", kline_event.kline.close);
+        // closes.push(kline_event.kline.close.parse().unwrap());
+        // display_contents(closes);
+        self.closes
+            .borrow_mut()
+            .push(kline_event.kline.close.parse().unwrap());
 
-            closes.push(kline_event.kline.close.parse().unwrap());
-            display_contents(closes);
-        }
+        self.display_list();
+        //}
     }
 
-    // pub fn display_contents(&self) {
-    //     for ii in self.close_prices.borrow_mut().iter_mut() {
-    //         println!("{}", ii);
-    //     }
-    // }
+    pub fn start_trading(&self, in_position: &mut bool) {
+        RsiTradingStrategy::start_rsi_logic(self.closes.borrow_mut().to_vec(), in_position)
+    }
+
+    pub fn display_list(&self) {
+        for ii in self.closes.borrow_mut().iter() {
+            println!("{}", ii)
+        }
+    }
 
     pub fn close_websocket(&self, web_socket: &mut WebSockets<'a>) {
         web_socket.disconnect().unwrap();
     }
 
-    pub fn new(pair: &'a str, kline: &'a str) -> Self {
+    pub fn is_closes_greater_than(&self, number: usize) -> bool {
+        self.closes.borrow_mut().len() > number
+    }
+
+    pub fn new(closes: RefCell<Vec<f64>>, pair: &'a str, kline: &'a str) -> Self {
         Binance {
             // close_prices: close_prices,
             pair: pair,
             kline: kline,
+            closes: closes,
         }
     }
 }
-
-// pub fn create_kline_and_handle_websocket_event<'a>(binance: &'a Binance) -> WebSockets<'a> {
-//     let web_socket = WebSockets::new(move |event: WebsocketEvent| {
-//         if let WebsocketEvent::Kline(kline_event) = event {
-//             //println!("candle Close at {} ", kline_event.kline.close);
-//             println!(
-//                 "Symbol: {}, high: {}, low: {}",
-//                 kline_event.kline.symbol, kline_event.kline.low, kline_event.kline.high
-//             );
-
-//             binance.process_kline(kline_event);
-//         };
-//         Ok(())
-//     });
-//     web_socket
-// }
