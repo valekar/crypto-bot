@@ -126,10 +126,3 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
         Ok(Binance::new(api_key, api_secret))
     }
 }
-
-// fn get_account( api_key_str: &str, api_secret_str: &str) {
-//     let api_key = Some(api_key_str.into());
-//     let secret_key = Some(api_secret_str.into());
-//     let account: Account = Binance::new(api_key, secret_key);
-//     //self.account = Some(account);
-// }
