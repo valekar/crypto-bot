@@ -1,19 +1,35 @@
-
 use dotenv::dotenv;
-
+use simplelog::*;
+use std::fs::File;
 pub fn display_contents(elements: &Vec<f64>) {
-    println!("Contents of array ::");
+    info!("Contents of array ::");
     for element in elements {
-        print!(" {}", element)
+        info!(" {}", element)
     }
-    println!(" ")
+    info!(" ")
 }
 
 pub fn load_env() {
-    println!("Loading .env variables!!");
+    CombinedLogger::init(vec![
+        TermLogger::new(
+            LevelFilter::Info,
+            Config::default(),
+            TerminalMode::Mixed,
+            ColorChoice::Auto,
+        ),
+        WriteLogger::new(
+            LevelFilter::Info,
+            Config::default(),
+            File::create("my_rust_binary.log").unwrap(),
+        ),
+    ])
+    .unwrap();
+
+    info!("Loading .env variables!!");
     dotenv().ok();
 }
 
+#[allow(dead_code)]
 mod paper {
     pub fn buy(
         investment: &'static mut Vec<f64>,

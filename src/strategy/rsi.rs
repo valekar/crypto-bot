@@ -1,46 +1,87 @@
 use crate::utils::utility::display_contents;
-use std::sync::atomic::AtomicBool;
+use binance::account::*;
 use ta_lib_wrapper::{TA_RetCode, TA_RSI};
 
 pub const RSI_PERIOD: u8 = 14;
 pub const RSI_OVERBOUGHT: f64 = 70.0;
 pub const RSI_OVERSOLD: f64 = 30.0;
 
-pub struct RsiTradingStrategy {}
+pub struct RsiTradingStrategy<'a> {
+    pair: &'a str,
+    account: &'a Account,
+}
 
-impl RsiTradingStrategy {
-    pub fn new() -> Self {
-        Self {}
+pub enum StrategyType {
+    RSI,
+    ENGULFING,
+}
+
+impl<'a> RsiTradingStrategy<'a> {
+    pub fn new(pair: &'a str, account: &'a Account) -> Self {
+        Self {
+            pair: pair,
+            account: account,
+        }
     }
-
-    pub fn start_rsi_logic(closes: Vec<f64>, in_position: &mut bool) {
+    pub fn start_rsi_logic_for_binance(&self, closes: Vec<f64>, in_position: &mut bool) {
         if closes.len() > RSI_PERIOD.into() {
             let result = Self::rsi(&closes);
             display_contents(&result);
             let last_rsi = result.last();
             match last_rsi {
                 Some(res) => {
-                    println!("the current RSI is {}", res);
-                    Self::enter_into_position(res, in_position);
+                    info!("the current RSI is {}", res);
+                    self.enter_into_position(res, in_position);
                 }
                 None => {
-                    println!("no RSI result");
+                    info!("no RSI result");
                 }
             }
         }
     }
 
-    fn enter_into_position(last_rsi: &f64, in_position: &mut bool) {
+    fn enter_into_position(&self, last_rsi: &f64, in_position: &mut bool) {
         if *last_rsi > RSI_OVERBOUGHT {
-            println!("Sell! Sell! Sell!");
+            warn!("Sell! Sell! Sell!");
+            let my_balance = self.account.get_balance("BNB").unwrap();
+            warn!(
+                " My account balance {}, Selling the free BNBs",
+                my_balance.free
+            );
+            let result = self
+                .account
+                .market_sell_using_quote_quantity(
+                    self.pair,
+                    my_balance.free.parse::<f64>().unwrap(),
+                )
+                .unwrap();
+
+            if result.status == "FILLED" {
+                *in_position = false;
+            }
         }
         if *last_rsi < RSI_OVERSOLD {
             if *in_position {
-                println!("We have already bought, no need to do anything :) ");
+                warn!("We have already bought, no need to do anything :) ");
             } else {
-                println!("BUY! BUY! BUY! ");
-                //order logic
-                *in_position = false;
+                let my_balance = self.account.get_balance("BUSD").unwrap();
+                warn!(
+                    " My account balance {}, Buying the from BUSDs",
+                    my_balance.free
+                );
+
+                warn!("BUY! BUY! BUY! ");
+                let result = self
+                    .account
+                    .market_buy_using_quote_quantity(
+                        self.pair,
+                        my_balance.free.parse::<f64>().unwrap(),
+                    )
+                    .unwrap();
+
+                if result.status == "FILLED" {
+                    *in_position = true;
+                }
             }
         }
     }

@@ -1,8 +1,10 @@
+use crate::strategy::rsi::StrategyType;
 use crate::RsiTradingStrategy;
 use binance::account::*;
 use binance::api::*;
 use binance::model::KlineEvent;
 use binance::websockets::*;
+use log::{info, trace, warn};
 use std::cell::RefCell;
 use std::env;
 use std::error::Error;
@@ -10,8 +12,9 @@ use std::sync::atomic::AtomicBool;
 
 pub trait Exchange<'b> {
     fn new(account: Account, closes: RefCell<Vec<f64>>, pairs: &'b str, klines: &'b str) -> Self;
-    fn kline_websocket(&self, binance: &'b MyBinance, in_position: &'b mut bool) -> WebSockets<'b>;
+    fn kline_websocket(&self, binance: &'b MyBinance) -> WebSockets<'b>;
     fn get_account() -> Result<Account, Box<dyn Error>>;
+    fn start_trading(&self, strategy_type: StrategyType, in_position: &'b mut bool);
 }
 
 pub struct MyBinance<'a> {
@@ -35,25 +38,9 @@ impl<'a> MyBinance<'a> {
         }
     }
 
-    // pub fn kline_websocket(binance: &'a MyBinance, in_position: &'a mut bool) -> WebSockets<'a> {
-    //     let web_socket = WebSockets::new(move |event: WebsocketEvent| {
-    //         if let WebsocketEvent::Kline(kline_event) = event {
-    //             //println!("candle Close at {} ", kline_event.kline.close);
-    //             println!(
-    //                 "Symbol: {}, high: {}, low: {}",
-    //                 kline_event.kline.symbol, kline_event.kline.low, kline_event.kline.high
-    //             );
-    //             binance.store_final_close_prices(kline_event);
-    //             binance.start_trading(in_position);
-    //         };
-    //         Ok(())
-    //     });
-    //     web_socket
-    // }
-
-    pub fn store_final_close_prices(&self, kline_event: KlineEvent) {
+    fn store_final_close_prices(&self, kline_event: KlineEvent) {
         if kline_event.kline.is_final_bar == true {
-            println!("candle Close at {} ", kline_event.kline.close);
+            info!("candle Close at {} ", kline_event.kline.close);
             // closes.push(kline_event.kline.close.parse().unwrap());
             // display_contents(closes);
             self.closes
@@ -64,39 +51,24 @@ impl<'a> MyBinance<'a> {
         }
     }
 
-    pub fn start_trading(&self, in_position: &mut bool) {
-        RsiTradingStrategy::start_rsi_logic(self.closes.borrow_mut().to_vec(), in_position)
-    }
-
     pub fn display_list(&self) {
-        for ii in self.closes.borrow_mut().iter() {
-            println!("{}", ii)
+        info!("List of closes");
+        let mut log_str: String = "".to_owned();
+        for close in self.closes.borrow_mut().iter() {
+            let log_close: String = format!("{}, ", close);
+            log_str.push_str(&log_close);
         }
+        info!("{}", log_str);
     }
 
     pub fn close_websocket(&self, web_socket: &mut WebSockets<'a>) {
         web_socket.disconnect().unwrap();
     }
-
-    pub fn is_closes_greater_than(&self, number: usize) -> bool {
-        self.closes.borrow_mut().len() > number
-    }
-
-    // pub fn new(closes: RefCell<Vec<f64>>, pairs: &'a str, klines: &'a str) -> MyBinance<'a> {
-    //     MyBinance {
-    //         // close_prices: close_prices,
-    //         pair: pairs,
-    //         kline: klines,
-    //         closes: closes,
-    //         account: None,
-    //     }
-    // }
 }
 
 impl<'b> Exchange<'b> for MyBinance<'b> {
     fn new(account: Account, closes: RefCell<Vec<f64>>, pairs: &'b str, klines: &'b str) -> Self {
         MyBinance {
-            // close_prices: close_prices,
             pair: pairs,
             kline: klines,
             closes: closes,
@@ -104,16 +76,15 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
         }
     }
 
-    fn kline_websocket(&self, binance: &'b MyBinance, in_position: &'b mut bool) -> WebSockets<'b> {
+    fn kline_websocket(&self, binance: &'b MyBinance) -> WebSockets<'b> {
         let web_socket = WebSockets::new(move |event: WebsocketEvent| {
             if let WebsocketEvent::Kline(kline_event) = event {
                 //println!("candle Close at {} ", kline_event.kline.close);
-                println!(
+                info!(
                     "Symbol: {}, high: {}, low: {}",
                     kline_event.kline.symbol, kline_event.kline.low, kline_event.kline.high
                 );
                 binance.store_final_close_prices(kline_event);
-                binance.start_trading(in_position);
             };
             Ok(())
         });
@@ -125,11 +96,13 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
         let api_secret = env::var("BINANCE_CLIENT_SECRET").ok();
         Ok(Binance::new(api_key, api_secret))
     }
-}
 
-// fn get_account( api_key_str: &str, api_secret_str: &str) {
-//     let api_key = Some(api_key_str.into());
-//     let secret_key = Some(api_secret_str.into());
-//     let account: Account = Binance::new(api_key, secret_key);
-//     //self.account = Some(account);
-// }
+    fn start_trading(&self, strategy_type: StrategyType, in_position: &'b mut bool) {
+        if let StrategyType::RSI = strategy_type {
+            warn!("Using RSI Strategy");
+            let rsi_trading_strategy = RsiTradingStrategy::new(self.pair, &self.account);
+            rsi_trading_strategy
+                .start_rsi_logic_for_binance(self.closes.borrow_mut().to_vec(), in_position)
+        }
+    }
+}
