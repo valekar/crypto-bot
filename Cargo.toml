@@ -9,3 +9,5 @@ edition = "2018"
 binance = { git = "https://github.com/wisespace-io/binance-rs.git" }
 dotenv = "0.15.0"
 ta-lib-wrapper = "0.2.0"
+log = "0.4"
+simplelog = "0.10.0"
