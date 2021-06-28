@@ -1,3 +1,5 @@
+use crate::exchange::my_binance::MyBinance;
+use crate::utils::constants::{BNB, BUSD, FILLED};
 use crate::utils::utility::display_contents;
 use binance::account::*;
 use ta_lib_wrapper::{TA_RetCode, TA_RSI};
@@ -9,6 +11,10 @@ pub const RSI_OVERSOLD: f64 = 30.0;
 pub struct RsiTradingStrategy<'a> {
     pair: &'a str,
     account: &'a Account,
+    buy_asset: &'a str,
+    buy_asset_percent: f64,
+    sell_asset: &'a str,
+    sell_asset_percent: f64,
 }
 
 pub enum StrategyType {
@@ -17,10 +23,21 @@ pub enum StrategyType {
 }
 
 impl<'a> RsiTradingStrategy<'a> {
-    pub fn new(pair: &'a str, account: &'a Account) -> Self {
+    pub fn new(
+        pair: &'a str,
+        account: &'a Account,
+        buy_asset: &'a str,
+        buy_asset_percent: f64,
+        sell_asset: &'a str,
+        sell_asset_percent: f64,
+    ) -> Self {
         Self {
             pair: pair,
             account: account,
+            buy_asset: buy_asset,
+            buy_asset_percent: buy_asset_percent,
+            sell_asset: sell_asset,
+            sell_asset_percent: sell_asset_percent,
         }
     }
     pub fn start_rsi_logic_for_binance(&self, closes: Vec<f64>, in_position: &mut bool) {
@@ -42,21 +59,14 @@ impl<'a> RsiTradingStrategy<'a> {
 
     fn enter_into_position(&self, last_rsi: &f64, in_position: &mut bool) {
         if *last_rsi > RSI_OVERBOUGHT {
-            warn!("Sell! Sell! Sell!");
-            let my_balance = self.account.get_balance("BNB").unwrap();
-            warn!(
-                " My account balance {}, Selling the free BNBs",
-                my_balance.free
+            let status = MyBinance::buy_asset(
+                self.pair,
+                self.buy_asset,
+                self.buy_asset_percent,
+                self.account,
             );
-            let result = self
-                .account
-                .market_sell_using_quote_quantity(
-                    self.pair,
-                    my_balance.free.parse::<f64>().unwrap(),
-                )
-                .unwrap();
 
-            if result.status == "FILLED" {
+            if status {
                 *in_position = false;
             }
         }
@@ -64,22 +74,14 @@ impl<'a> RsiTradingStrategy<'a> {
             if *in_position {
                 warn!("We have already bought, no need to do anything :) ");
             } else {
-                let my_balance = self.account.get_balance("BUSD").unwrap();
-                warn!(
-                    " My account balance {}, Buying the from BUSDs",
-                    my_balance.free
+                let status = MyBinance::sell_asset(
+                    self.pair,
+                    self.sell_asset,
+                    self.sell_asset_percent,
+                    self.account,
                 );
 
-                warn!("BUY! BUY! BUY! ");
-                let result = self
-                    .account
-                    .market_buy_using_quote_quantity(
-                        self.pair,
-                        my_balance.free.parse::<f64>().unwrap(),
-                    )
-                    .unwrap();
-
-                if result.status == "FILLED" {
+                if status {
                     *in_position = true;
                 }
             }

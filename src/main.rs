@@ -7,7 +7,7 @@ use exchange::my_binance::{Exchange, MyBinance};
 use std::cell::RefCell;
 use strategy::rsi::RsiTradingStrategy;
 use strategy::rsi::StrategyType;
-use utils::constants::{BNB_BUSD, ONE_MINUTE_KLINE};
+use utils::constants::{BNB, BNB_BUSD, BUSD, ONE_MINUTE_KLINE};
 use utils::utility::load_env;
 
 mod exchange;
@@ -22,6 +22,10 @@ fn main() {
         RefCell::new(Vec::new()),
         BNB_BUSD,
         ONE_MINUTE_KLINE,
+        BNB,
+        50.0,
+        BUSD,
+        100.0,
     );
 
     let mut web_socket = my_binance.kline_websocket(&my_binance);
