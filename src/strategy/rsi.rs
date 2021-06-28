@@ -1,43 +1,24 @@
 use crate::exchange::my_binance::MyBinance;
-use crate::utils::constants::{BNB, BUSD, FILLED};
 use crate::utils::utility::display_contents;
-use binance::account::*;
 use ta_lib_wrapper::{TA_RetCode, TA_RSI};
 
 pub const RSI_PERIOD: u8 = 14;
 pub const RSI_OVERBOUGHT: f64 = 70.0;
 pub const RSI_OVERSOLD: f64 = 30.0;
 
-pub struct RsiTradingStrategy<'a> {
-    pair: &'a str,
-    account: &'a Account,
-    buy_asset: &'a str,
-    buy_asset_percent: f64,
-    sell_asset: &'a str,
-    sell_asset_percent: f64,
-}
-
 pub enum StrategyType {
     RSI,
     ENGULFING,
 }
 
+pub struct RsiTradingStrategy<'a> {
+    my_binance: Option<&'a MyBinance<'a>>,
+}
+
 impl<'a> RsiTradingStrategy<'a> {
-    pub fn new(
-        pair: &'a str,
-        account: &'a Account,
-        buy_asset: &'a str,
-        buy_asset_percent: f64,
-        sell_asset: &'a str,
-        sell_asset_percent: f64,
-    ) -> Self {
+    pub fn new(my_binance: Option<&'a MyBinance<'a>>) -> Self {
         Self {
-            pair: pair,
-            account: account,
-            buy_asset: buy_asset,
-            buy_asset_percent: buy_asset_percent,
-            sell_asset: sell_asset,
-            sell_asset_percent: sell_asset_percent,
+            my_binance: my_binance,
         }
     }
     pub fn start_rsi_logic_for_binance(&self, closes: Vec<f64>, in_position: &mut bool) {
@@ -59,12 +40,7 @@ impl<'a> RsiTradingStrategy<'a> {
 
     fn enter_into_position(&self, last_rsi: &f64, in_position: &mut bool) {
         if *last_rsi > RSI_OVERBOUGHT {
-            let status = MyBinance::buy_asset(
-                self.pair,
-                self.buy_asset,
-                self.buy_asset_percent,
-                self.account,
-            );
+            let status = self.my_binance.unwrap().buy_asset();
 
             if status {
                 *in_position = false;
@@ -74,12 +50,7 @@ impl<'a> RsiTradingStrategy<'a> {
             if *in_position {
                 warn!("We have already bought, no need to do anything :) ");
             } else {
-                let status = MyBinance::sell_asset(
-                    self.pair,
-                    self.sell_asset,
-                    self.sell_asset_percent,
-                    self.account,
-                );
+                let status = self.my_binance.unwrap().sell_asset();
 
                 if status {
                     *in_position = true;
@@ -88,7 +59,7 @@ impl<'a> RsiTradingStrategy<'a> {
         }
     }
 
-    pub fn rsi(close_prices: &Vec<f64>) -> Vec<f64> {
+    fn rsi(close_prices: &Vec<f64>) -> Vec<f64> {
         let mut out: Vec<f64> = Vec::with_capacity(close_prices.len());
         let mut out_begin: i32 = 0;
         let mut out_size: i32 = 0;

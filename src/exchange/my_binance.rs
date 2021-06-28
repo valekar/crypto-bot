@@ -1,5 +1,5 @@
 use crate::strategy::rsi::StrategyType;
-use crate::utils::constants::{BNB, BUSD, FILLED};
+use crate::utils::constants::FILLED;
 use crate::RsiTradingStrategy;
 use binance::account::*;
 use binance::api::*;
@@ -17,26 +17,16 @@ pub trait Exchange<'b> {
         closes: RefCell<Vec<f64>>,
         pairs: &'b str,
         klines: &'b str,
-        buy_asset: &'b str,
+        buy_asset_name: &'b str,
         buy_asset_percent: f64,
-        sell_asset: &'b str,
+        sell_asset_name: &'b str,
         sell_asset_percent: f64,
     ) -> Self;
     fn kline_websocket(&self, binance: &'b MyBinance) -> WebSockets<'b>;
     fn get_account() -> Result<Account, Box<dyn Error>>;
     fn start_trading(&self, strategy_type: StrategyType, in_position: &'b mut bool);
-    // fn buy_asset(
-    //     pair: &'b str,
-    //     buy_asset_name: &'b str,
-    //     asset_percent: f64,
-    //     account: Account,
-    // ) -> bool;
-    // fn sell_asset(
-    //     pair: &'b str,
-    //     sell_asset_name: &'b str,
-    //     asset_percent: f64,
-    //     account: Account,
-    // ) -> bool;
+    //fn buy_asset(&self) -> bool;
+    //fn sell_asset(&self) -> bool;
 }
 
 pub struct MyBinance<'a> {
@@ -44,9 +34,9 @@ pub struct MyBinance<'a> {
     kline: &'a str,
     closes: RefCell<Vec<f64>>,
     account: Account,
-    buy_asset: &'a str,
+    buy_asset_name: &'a str,
     buy_asset_percent: f64,
-    sell_asset: &'a str,
+    sell_asset_name: &'a str,
     sell_asset_percent: f64,
 }
 
@@ -91,43 +81,35 @@ impl<'a> MyBinance<'a> {
         web_socket.disconnect().unwrap();
     }
 
-    pub fn buy_asset(
-        pair: &'a str,
-        buy_asset_name: &'a str,
-        buy_asset_percent: f64,
-        account: &Account,
-    ) -> bool {
-        let my_balance = account.get_balance(buy_asset_name).unwrap();
+    pub fn buy_asset(&self) -> bool {
+        let my_balance = self.account.get_balance(self.buy_asset_name).unwrap();
         warn!("BUY! BUY! BUY! ");
         warn!(
             " My account balance {}, Buying the from {}",
-            my_balance.free, buy_asset_name
+            my_balance.free, self.buy_asset_name
         );
-        let result = account
+        let result = self
+            .account
             .market_buy_using_quote_quantity(
-                pair,
-                my_balance.free.parse::<f64>().unwrap() * buy_asset_percent,
+                self.pair,
+                my_balance.free.parse::<f64>().unwrap() * self.buy_asset_percent,
             )
             .unwrap();
 
         &result.status == FILLED
     }
-    pub fn sell_asset(
-        pair: &'a str,
-        sell_asset_name: &'a str,
-        sell_asset_percent: f64,
-        account: &Account,
-    ) -> bool {
-        let my_balance = account.get_balance(sell_asset_name).unwrap();
+    pub fn sell_asset(&self) -> bool {
+        let my_balance = self.account.get_balance(self.sell_asset_name).unwrap();
         warn!("Sell! Sell! Sell!");
         warn!(
             " My account balance {}, Selling the free {}",
-            my_balance.free, sell_asset_name
+            my_balance.free, self.sell_asset_name
         );
-        let result = account
+        let result = self
+            .account
             .market_sell_using_quote_quantity(
-                pair,
-                my_balance.free.parse::<f64>().unwrap() * sell_asset_percent,
+                self.pair,
+                my_balance.free.parse::<f64>().unwrap() * self.sell_asset_percent,
             )
             .unwrap();
 
@@ -141,9 +123,9 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
         closes: RefCell<Vec<f64>>,
         pairs: &'b str,
         klines: &'b str,
-        buy_asset: &'b str,
+        buy_asset_name: &'b str,
         buy_asset_percent: f64,
-        sell_asset: &'b str,
+        sell_asset_name: &'b str,
         sell_asset_percent: f64,
     ) -> Self {
         MyBinance {
@@ -151,9 +133,9 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
             kline: klines,
             closes: closes,
             account: account,
-            buy_asset: buy_asset,
+            buy_asset_name: buy_asset_name,
             buy_asset_percent: buy_asset_percent,
-            sell_asset: sell_asset,
+            sell_asset_name: sell_asset_name,
             sell_asset_percent: sell_asset_percent,
         }
     }
@@ -182,14 +164,7 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
     fn start_trading(&self, strategy_type: StrategyType, in_position: &'b mut bool) {
         if let StrategyType::RSI = strategy_type {
             warn!("Using RSI Strategy");
-            let rsi_trading_strategy = RsiTradingStrategy::new(
-                self.pair,
-                &self.account,
-                &self.buy_asset,
-                self.buy_asset_percent,
-                &self.sell_asset,
-                self.sell_asset_percent,
-            );
+            let rsi_trading_strategy = RsiTradingStrategy::new(Some(self));
             rsi_trading_strategy
                 .start_rsi_logic_for_binance(self.closes.borrow_mut().to_vec(), in_position)
         }
