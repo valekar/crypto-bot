@@ -41,9 +41,9 @@ pub struct MyBinance<'a> {
 }
 
 impl<'a> MyBinance<'a> {
-    pub fn open_websocket(&self, web_socket: &mut WebSockets<'a>) {
+    pub fn open_websocket_with_pair(&self, web_socket: &mut WebSockets<'a>) {
         let keep_running = AtomicBool::new(true); // Used to control the event loop
-        let kline: String = format!("{}{}", self.pair, self.kline);
+        let kline: String = format!("{}{}", self.pair.to_lowercase(), self.kline);
         web_socket.connect(&kline).unwrap(); // check error
         if let Err(e) = web_socket.event_loop(&keep_running) {
             match e {
@@ -81,36 +81,48 @@ impl<'a> MyBinance<'a> {
         web_socket.disconnect().unwrap();
     }
 
-    pub fn buy_asset(&self) -> bool {
-        let my_balance = self.account.get_balance(self.buy_asset_name).unwrap();
+    pub fn buy_asset_with(&self) -> bool {
+        let my_balance = self.account.get_balance(self.sell_asset_name).unwrap();
         warn!("BUY! BUY! BUY! ");
         warn!(
-            " My account balance {}, Buying the from {}",
-            my_balance.free, self.buy_asset_name
+            " My account balance {}, Buying the asset using {}",
+            my_balance.free, self.sell_asset_name
         );
+
+        let buy_amount_str = format!(
+            "{:.8}",
+            (my_balance.free.parse::<f64>().unwrap() * self.buy_asset_percent)
+        );
+        let buy_amount: f64 = buy_amount_str.parse::<f64>().unwrap().floor();
+
+        warn!("Buying {} amount ", buy_amount);
+
         let result = self
             .account
-            .market_buy_using_quote_quantity(
-                self.pair,
-                my_balance.free.parse::<f64>().unwrap() * self.buy_asset_percent,
-            )
+            .market_buy_using_quote_quantity(self.pair, buy_amount)
             .unwrap();
 
         &result.status == FILLED
     }
     pub fn sell_asset(&self) -> bool {
-        let my_balance = self.account.get_balance(self.sell_asset_name).unwrap();
+        let my_balance = self.account.get_balance(self.buy_asset_name).unwrap();
         warn!("Sell! Sell! Sell!");
         warn!(
             " My account balance {}, Selling the free {}",
-            my_balance.free, self.sell_asset_name
+            my_balance.free, self.buy_asset_name
         );
+
+        let sell_amount_str: String = format!(
+            "{:.3}",
+            (my_balance.free.parse::<f64>().unwrap() * self.sell_asset_percent)
+        );
+
+        let sell_amount: f64 = sell_amount_str.parse::<f64>().unwrap();
+        warn!("Selling {} amount ", sell_amount);
+
         let result = self
             .account
-            .market_sell_using_quote_quantity(
-                self.pair,
-                my_balance.free.parse::<f64>().unwrap() * self.sell_asset_percent,
-            )
+            .market_sell(self.pair, sell_amount - 0.001)
             .unwrap();
 
         &result.status == FILLED

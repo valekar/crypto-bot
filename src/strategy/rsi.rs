@@ -40,7 +40,7 @@ impl<'a> RsiTradingStrategy<'a> {
 
     fn enter_into_position(&self, last_rsi: &f64, in_position: &mut bool) {
         if *last_rsi > RSI_OVERBOUGHT {
-            let status = self.my_binance.unwrap().buy_asset();
+            let status = self.my_binance.unwrap().buy_asset_with();
 
             if status {
                 *in_position = false;

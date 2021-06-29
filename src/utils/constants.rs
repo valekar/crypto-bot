@@ -1,4 +1,4 @@
-pub const BNB_BUSD: &str = "bnbbusd";
+pub const BNB_BUSD: &str = "BNBBUSD";
 pub const ONE_MINUTE_KLINE: &str = "@kline_1m";
 
 //assets

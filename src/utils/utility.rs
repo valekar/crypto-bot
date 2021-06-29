@@ -1,6 +1,7 @@
 use dotenv::dotenv;
 use simplelog::*;
-use std::fs::File;
+use std::fs::OpenOptions;
+
 pub fn display_contents(elements: &Vec<f64>) {
     info!("Contents of array ::");
     for element in elements {
@@ -20,13 +21,17 @@ pub fn load_env() {
         WriteLogger::new(
             LevelFilter::Info,
             Config::default(),
-            File::create("my_rust_binary.log").unwrap(),
+            OpenOptions::new()
+                .append(true)
+                .open("my_rust_binary.log")
+                .unwrap(),
         ),
     ])
     .unwrap();
 
     info!("Loading .env variables!!");
     dotenv().ok();
+    //pretty_env_logger::init();
 }
 
 #[allow(dead_code)]
