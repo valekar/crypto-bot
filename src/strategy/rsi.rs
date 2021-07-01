@@ -1,21 +1,9 @@
-use crate::exchange::my_binance::MyBinance;
-use crate::utils::utility::display_contents;
+use crate::utils::utility::{display_contents, TransactionType};
 use ta_lib_wrapper::{TA_RetCode, TA_RSI};
 
-pub const RSI_PERIOD: u8 = 3;
+pub const RSI_PERIOD: u8 = 4;
 pub const RSI_OVERBOUGHT: f64 = 70.0;
 pub const RSI_OVERSOLD: f64 = 30.0;
-
-pub enum StrategyType {
-    RSI(bool),
-    ENGULFING,
-}
-#[derive(PartialEq)]
-pub enum TransactionType {
-    SELL,
-    BUY,
-    HOLD,
-}
 
 pub struct RsiTradingStrategy {}
 
@@ -37,18 +25,18 @@ impl RsiTradingStrategy {
             }
         }
 
-        TransactionType::HOLD
+        TransactionType::Hold
     }
 
     fn enter_into_position(last_rsi: &f64) -> TransactionType {
         if *last_rsi > RSI_OVERBOUGHT {
-            return TransactionType::BUY;
+            return TransactionType::Buy;
         }
         if *last_rsi < RSI_OVERSOLD {
-            return TransactionType::SELL;
+            return TransactionType::Sell;
         }
 
-        TransactionType::HOLD
+        TransactionType::Hold
     }
 
     fn rsi(close_prices: &Vec<f64>) -> Vec<f64> {

@@ -76,3 +76,19 @@ mod paper {
         (portfolio, money_end, investment)
     }
 }
+
+#[derive(Clone)]
+pub enum StrategyType {
+    Rsi(bool),
+    Engulfing(bool),
+}
+#[derive(PartialEq)]
+pub enum TransactionType {
+    Sell,
+    Buy,
+    Hold,
+}
+
+pub enum TradingStyle {
+    CoreSatellite,
+}
