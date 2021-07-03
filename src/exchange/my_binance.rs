@@ -27,16 +27,12 @@ pub trait Exchange<'b> {
         right_asset_percent: f64,
         strategy_type: StrategyType,
         trading_style: TradingStyle,
-        core_satellite_investment: CoreSatellite,
+        core_satellite_investment: RefCell<CoreSatellite>,
     ) -> Self;
-    fn kline_websocket(
-        &'b self,
-        in_position_for_rsi: &'b mut bool,
-        first_time_trading: &'b mut bool,
-    ) -> WebSockets<'b>;
+    fn kline_websocket(&'b self, in_position_for_rsi: &'b mut bool) -> WebSockets<'b>;
     fn get_account() -> Result<Account, Box<dyn Error>>;
-    fn call_trading(&'b self, in_position_for_rsi: &'b mut bool, first_time_trading: &'b mut bool);
-    fn get_asset_balance(&'b self, asset_name: &str) -> f64;
+    fn call_trading(&'b self, in_position_for_rsi: &'b mut bool);
+    fn get_asset_free_balance(&'b self, asset_name: &str) -> f64;
     //fn buy_asset(&self) -> bool;
     //fn sell_asset(&self) -> bool;
 }
@@ -55,7 +51,7 @@ pub struct MyBinance<'a> {
     right_asset_percent: f64,
     strategy_type: StrategyType,
     trading_style: TradingStyle,
-    core_satellite_investment: CoreSatellite,
+    core_satellite_investment: RefCell<CoreSatellite>,
 }
 
 impl<'a> MyBinance<'a> {
@@ -108,9 +104,9 @@ impl<'a> MyBinance<'a> {
         web_socket.disconnect().unwrap();
     }
 
-    pub fn buy_asset_with_right(&self) -> bool {
+    pub fn buy_left_asset_with_right(&self, calculated_amount: f64) -> bool {
         error!("BUY! BUY! BUY! ");
-        let buy_amount: f64 = self.get_right_asset_amount();
+        let buy_amount: f64 = self.get_right_asset_adjusted_amount(calculated_amount);
         warn!("Buying {} amount ", buy_amount);
         self.buy_left_asset_with_amount(buy_amount)
         //true
@@ -122,24 +118,28 @@ impl<'a> MyBinance<'a> {
             .market_buy_using_quote_quantity(self.pair, buy_amount)
             .unwrap();
 
+        warn!("Bought asset at {} price", result.price);
+
         &result.status == FILLED
     }
 
-    pub fn get_right_asset_amount(&self) -> f64 {
-        let free_amount = self.get_asset_balance(self.right_asset_name);
-        warn!(
-            " My account balance {}, Buying the asset using {}",
-            free_amount, self.right_asset_name
-        );
-        let calculated_amount = free_amount * self.right_asset_percent;
-        let calculated_amount_str = format!("{:.8}", calculated_amount);
+    pub fn get_right_asset_adjusted_amount(&self, right_asset_amount: f64) -> f64 {
+        let calculated_amount_str = format!("{:.8}", right_asset_amount);
         calculated_amount_str.parse::<f64>().unwrap().floor()
     }
 
-    pub fn sell_left_asset(&self) -> bool {
-        error!("Sell! Sell! Sell!");
+    pub fn get_right_asset_amount(&self) -> f64 {
+        let free_amount = self.get_asset_free_balance(self.right_asset_name);
+        info!(
+            " My account balance {}, Buying the asset using {}",
+            free_amount, self.right_asset_name
+        );
+        free_amount * self.right_asset_percent
+    }
 
-        let sell_amount: f64 = self.get_left_asset_amount();
+    pub fn sell_left_asset(&self, calculated_amount: f64) -> bool {
+        error!("Sell! Sell! Sell!");
+        let sell_amount: f64 = self.get_left_asset_adjusted_amount(calculated_amount);
         warn!("Selling {} amount ", sell_amount);
 
         self.sell_left_asset_of_amount(sell_amount)
@@ -152,18 +152,23 @@ impl<'a> MyBinance<'a> {
             .market_sell(self.pair, sell_amount - 0.001)
             .unwrap();
 
+        warn!("Sold asset at {} price", result.price);
+
         &result.status == FILLED
     }
 
+    pub fn get_left_asset_adjusted_amount(&self, left_asset_amount: f64) -> f64 {
+        let calculated_amount_str = format!("{:.3}", left_asset_amount);
+        calculated_amount_str.parse::<f64>().unwrap().floor()
+    }
+
     pub fn get_left_asset_amount(&self) -> f64 {
-        let free_amount = self.get_asset_balance(self.left_asset_name);
-        warn!(
-            " My account balance {}, Selling the free {}",
+        let free_amount = self.get_asset_free_balance(self.left_asset_name);
+        info!(
+            " My account balance {}, Asset name is {}",
             free_amount, self.left_asset_name
         );
-        let calculated_amount = free_amount * self.left_asset_percent;
-        let calculated_amount_str = format!("{:.3}", calculated_amount);
-        calculated_amount_str.parse::<f64>().unwrap().floor()
+        free_amount * self.left_asset_percent
     }
 }
 
@@ -176,13 +181,13 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
         lows: RefCell<Vec<f64>>,
         pairs: &'b str,
         klines: &'b str,
-        buy_asset_name: &'b str,
-        buy_asset_percent: f64,
-        sell_asset_name: &'b str,
-        sell_asset_percent: f64,
+        left_asset_name: &'b str,
+        left_asset_percent: f64,
+        right_asset_name: &'b str,
+        right_asset_percent: f64,
         strategy_type: StrategyType,
         trading_style: TradingStyle,
-        core_satellite_investment: CoreSatellite,
+        core_satellite_investment: RefCell<CoreSatellite>,
     ) -> Self {
         MyBinance {
             pair: pairs,
@@ -192,21 +197,17 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
             highs: highs,
             lows: lows,
             account: account,
-            left_asset_name: buy_asset_name,
-            left_asset_percent: buy_asset_percent,
-            right_asset_name: sell_asset_name,
-            right_asset_percent: sell_asset_percent,
+            left_asset_name: left_asset_name,
+            left_asset_percent: left_asset_percent,
+            right_asset_name: right_asset_name,
+            right_asset_percent: right_asset_percent,
             strategy_type: strategy_type,
             trading_style: trading_style,
             core_satellite_investment: core_satellite_investment,
         }
     }
 
-    fn kline_websocket(
-        &'b self,
-        in_position_for_rsi: &'b mut bool,
-        first_time_trading: &'b mut bool,
-    ) -> WebSockets<'b> {
+    fn kline_websocket(&'b self, in_position_for_rsi: &'b mut bool) -> WebSockets<'b> {
         let web_socket = WebSockets::new(move |event: WebsocketEvent| {
             if let WebsocketEvent::Kline(kline_event) = event {
                 //println!("candle Close at {} ", kline_event.kline.close);
@@ -215,7 +216,7 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                     kline_event.kline.symbol, kline_event.kline.low, kline_event.kline.high
                 );
                 self.store_prices(kline_event);
-                self.call_trading(in_position_for_rsi, first_time_trading);
+                self.call_trading(in_position_for_rsi);
 
                 //self.store_prices(kline_event);
             };
@@ -230,7 +231,7 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
         Ok(Binance::new(api_key, api_secret))
     }
 
-    fn get_asset_balance(&'b self, asset_name: &str) -> f64 {
+    fn get_asset_free_balance(&'b self, asset_name: &str) -> f64 {
         self.account
             .get_balance(asset_name)
             .unwrap()
@@ -239,7 +240,7 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
             .unwrap()
     }
 
-    fn call_trading(&'b self, in_position_for_rsi: &mut bool, first_time_trading: &mut bool) {
+    fn call_trading(&self, in_position_for_rsi: &mut bool) {
         //if let StrategyType::RSI = strategy_type {}
 
         match self.strategy_type {
@@ -253,7 +254,8 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
 
                     match transaction_type {
                         TransactionType::Sell => {
-                            let result = self.sell_left_asset();
+                            let calculated_amount = self.get_left_asset_amount();
+                            let result = self.sell_left_asset(calculated_amount);
 
                             if result {
                                 *in_position_for_rsi = false;
@@ -265,7 +267,8 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                                 warn!("We are already in position, need to do anything!");
                             } else {
                                 //warn!("We are buy")
-                                let result = self.buy_asset_with_right();
+                                let calculated_amount = self.get_right_asset_amount();
+                                let result = self.buy_left_asset_with_right(calculated_amount);
 
                                 if result {
                                     *in_position_for_rsi = true;
@@ -279,7 +282,40 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                     //continous RSI
                 }
             }
-            StrategyType::Engulfing(use_first_time_trade) => if use_first_time_trade {},
+            StrategyType::Engulfing(use_first_time_trade) => {
+                if use_first_time_trade {
+                    let left_asset_amount = self.get_left_asset_amount();
+                    let core_trade_amount = self
+                        .core_satellite_investment
+                        .borrow()
+                        .get_core_trade_amount(left_asset_amount);
+                    let trade_amount = self
+                        .core_satellite_investment
+                        .borrow()
+                        .get_trade_amount(left_asset_amount);
+
+                    if *self
+                        .core_satellite_investment
+                        .borrow_mut()
+                        .core_to_trade
+                        .borrow_mut()
+                        .get_mut()
+                    {
+                        let result = self.buy_left_asset_with_right(core_trade_amount);
+                        if result {
+                            *self
+                                .core_satellite_investment
+                                .borrow_mut()
+                                .core_to_trade
+                                .borrow_mut()
+                                .get_mut() = false;
+                        }
+                        self.core_satellite_investment.borrow_mut().core_quantity =
+                            self.get_asset_free_balance(self.left_asset_name);
+                    }
+                    // code here
+                }
+            }
         }
     }
 }

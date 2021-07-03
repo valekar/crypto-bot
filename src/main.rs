@@ -5,11 +5,11 @@ extern crate log;
 //extern crate pretty_env_logger;
 use exchange::my_binance::{Exchange, MyBinance};
 use std::cell::RefCell;
+use std::sync::atomic::AtomicBool;
+use strategy::core_satellite_investment::CoreSatellite;
 use strategy::rsi::RsiTradingStrategy;
 use utils::constants::{BNB, BNB_BUSD, BUSD, ONE_MINUTE_KLINE};
 use utils::utility::{load_env, StrategyType, TradingStyle};
-
-use strategy::core_satellite_investment::CoreSatellite;
 
 mod exchange;
 mod strategy;
@@ -55,9 +55,8 @@ fn use_rsi_trading_strategy() {
     // warn!("IS the asset sold?? {}", result);
 
     let in_position_for_rsi: &mut bool = &mut false;
-    let first_time_trading: &mut bool = &mut true;
 
-    let mut web_socket = my_binance.kline_websocket(in_position_for_rsi, first_time_trading);
+    let mut web_socket = my_binance.kline_websocket(in_position_for_rsi);
 
     my_binance.open_websocket_with_pair(&mut web_socket);
     my_binance.close_websocket(&mut web_socket);
@@ -85,22 +84,22 @@ fn use_engulfing_trading_strategy() {
     );
 
     let in_position_for_rsi: &mut bool = &mut false;
-    let first_time_trading: &mut bool = &mut true;
 
-    let mut web_socket = my_binance_1.kline_websocket(in_position_for_rsi, first_time_trading);
+    let mut web_socket = my_binance_1.kline_websocket(in_position_for_rsi);
 
     my_binance_1.open_websocket_with_pair(&mut web_socket);
     my_binance_1.close_websocket(&mut web_socket);
 }
 
-fn initialize_core_satellite_investment() -> CoreSatellite {
-    CoreSatellite::new(
-        0.8,                      // core_trade_amount - initial_asset_amount_to_be_purchased
-        0.2,                      // trade_amount -  this amount is used for trading
-        0.0,                      // core_quantity  - how much asset is purchased
-        0.0,                      // portfolio -  I don't know
-        RefCell::new(Vec::new()), // investment - investment logs
+fn initialize_core_satellite_investment() -> RefCell<CoreSatellite> {
+    RefCell::new(CoreSatellite::new(
+        0.8,                                 // core_trade_amount - initial_asset_amount_to_be_purchased
+        0.2,                                 // trade_amount -  this amount is used for trading
+        0.0,                                 // core_quantity  - how much asset is purchased
+        RefCell::new(AtomicBool::new(true)), // core_to_trade - this is used for first time trading
+        0.0,                                 // portfolio -  I don't know
+        RefCell::new(Vec::new()),            // investment - investment logs
         RefCell::new(Vec::new()), // real_time_portfolio_value - I guess this is also for logs
-        1.0,                      // money_end final amount left
-    )
+        1.0,                      // money_end -  final amount left
+    ))
 }

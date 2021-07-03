@@ -12,7 +12,7 @@ pub struct CoreSatellite {
     pub money_end: f64,
 }
 
-impl CoreSatellite {
+impl<'a> CoreSatellite {
     pub fn new(
         //initial_amount: f64,
         core_trade_amount_percent: f64,
