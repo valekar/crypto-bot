@@ -132,9 +132,9 @@ impl<'a> MyBinance<'a> {
         match calculated_amount_str.parse::<f64>() {
             Ok(result) => result,
             Err(e) => {
-                error!(" Parse error {}", e)
+                error!(" Parse error {}", e);
+                0.0
             }
-            _ => 0.0,
         }
     }
 
