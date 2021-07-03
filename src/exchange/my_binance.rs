@@ -4,6 +4,7 @@ use crate::CoreSatellite;
 use crate::RsiTradingStrategy;
 use binance::account::*;
 use binance::api::*;
+use binance::errors::BinanceContentError;
 use binance::model::KlineEvent;
 use binance::websockets::*;
 use log::{info, warn};
@@ -70,7 +71,7 @@ impl<'a> MyBinance<'a> {
         }
     }
 
-    fn store_prices(&'a self, kline_event: KlineEvent) {
+    fn store_prices_at_candle_close(&'a self, kline_event: KlineEvent) {
         if kline_event.kline.is_final_bar == true {
             info!("candle Close at {} ", kline_event.kline.close);
             // closes.push(kline_event.kline.close.parse().unwrap());
@@ -110,11 +111,11 @@ impl<'a> MyBinance<'a> {
         error!("BUY! BUY! BUY! ");
         let buy_amount: f64 = self.get_right_asset_adjusted_amount(calculated_amount);
         warn!("Buying {} amount ", buy_amount);
-        self.buy_left_asset_with_amount(buy_amount)
+        self.buy_left_asset_with_amount(buy_amount).unwrap_or(false)
         //true
     }
 
-    pub fn buy_left_asset_with_amount(&self, buy_amount: f64) -> bool {
+    pub fn buy_left_asset_with_amount(&self, buy_amount: f64) -> Result<bool, BinanceContentError> {
         let result = self
             .account
             .market_buy_using_quote_quantity(self.pair, buy_amount)
@@ -122,13 +123,19 @@ impl<'a> MyBinance<'a> {
 
         warn!("Bought asset at {} price", result.price);
 
-        &result.status == FILLED
+        Ok(&result.status == FILLED)
         //true
     }
 
     pub fn get_right_asset_adjusted_amount(&self, right_asset_amount: f64) -> f64 {
         let calculated_amount_str = format!("{:.8}", right_asset_amount);
-        calculated_amount_str.parse::<f64>().unwrap()
+        match calculated_amount_str.parse::<f64>() {
+            Ok(result) => result,
+            Err(e) => {
+                error!(" Parse error {}", e)
+            }
+            _ => 0.0,
+        }
     }
 
     pub fn get_right_asset_amount(&self) -> f64 {
@@ -145,13 +152,13 @@ impl<'a> MyBinance<'a> {
         let sell_amount: f64 = self.get_left_asset_adjusted_amount(calculated_amount);
         warn!("Selling {} amount ", sell_amount);
 
-        self.sell_left_asset_of_amount(sell_amount)
+        self.sell_left_asset_of_amount(sell_amount).unwrap_or(false)
         //true
     }
 
-    pub fn sell_left_asset_of_amount(&self, sell_amount: f64) -> bool {
+    pub fn sell_left_asset_of_amount(&self, sell_amount: f64) -> Result<bool, BinanceContentError> {
         if sell_amount <= 0.0 {
-            false
+            Ok(false)
         } else {
             let result = self
                 .account
@@ -160,7 +167,7 @@ impl<'a> MyBinance<'a> {
 
             warn!("Sold asset at {} price", result.price);
 
-            &result.status == FILLED
+            Ok(&result.status == FILLED)
             //true
         }
     }
@@ -225,7 +232,7 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                     "Symbol: {}, high: {}, low: {}",
                     kline_event.kline.symbol, kline_event.kline.low, kline_event.kline.high
                 );
-                self.store_prices(kline_event);
+                self.store_prices_at_candle_close(kline_event);
                 self.call_trading();
 
                 //self.store_prices(kline_event);

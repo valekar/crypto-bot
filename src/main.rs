@@ -18,7 +18,7 @@ mod utils;
 fn main() {
     load_env();
 
-    use_rsi_trading_strategy();
+    //use_rsi_trading_strategy();
 
     /*
      * Core satellite strategy
