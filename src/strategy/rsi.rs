@@ -1,13 +1,23 @@
 use crate::utils::utility::{display_contents, TransactionType};
+use std::cell::RefCell;
+use std::sync::atomic::AtomicBool;
 use ta_lib_wrapper::{TA_RetCode, TA_RSI};
 
 pub const RSI_PERIOD: u8 = 4;
 pub const RSI_OVERBOUGHT: f64 = 70.0;
 pub const RSI_OVERSOLD: f64 = 30.0;
 
-pub struct RsiTradingStrategy {}
+pub struct RsiTradingStrategy {
+    pub in_position: RefCell<AtomicBool>,
+}
 
 impl RsiTradingStrategy {
+    pub fn new(in_position: RefCell<AtomicBool>) -> Self {
+        Self {
+            in_position: in_position,
+        }
+    }
+
     pub fn call_rsi_logic(closes: Vec<f64>) -> TransactionType {
         info!("No of closes {}", closes.len());
         if closes.len() > RSI_PERIOD.into() {

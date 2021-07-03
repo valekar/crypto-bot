@@ -4,10 +4,11 @@ use std::fs::OpenOptions;
 
 pub fn display_contents(elements: &Vec<f64>) {
     info!("Contents of array ::");
+    let mut message: String = "".to_owned();
     for element in elements {
-        info!(" {}", element)
+        message.push_str(format!("{} ", element).as_str());
     }
-    info!(" ")
+    info!("{} ", message);
 }
 
 pub fn load_env() {

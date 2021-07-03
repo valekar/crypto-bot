@@ -28,10 +28,11 @@ pub trait Exchange<'b> {
         strategy_type: StrategyType,
         trading_style: TradingStyle,
         core_satellite_investment: RefCell<CoreSatellite>,
+        rsi_trading_strategy: RefCell<RsiTradingStrategy>,
     ) -> Self;
-    fn kline_websocket(&'b self, in_position_for_rsi: &'b mut bool) -> WebSockets<'b>;
+    fn kline_websocket(&'b self) -> WebSockets<'b>;
     fn get_account() -> Result<Account, Box<dyn Error>>;
-    fn call_trading(&'b self, in_position_for_rsi: &'b mut bool);
+    fn call_trading(&'b self);
     fn get_asset_free_balance(&'b self, asset_name: &str) -> f64;
     //fn buy_asset(&self) -> bool;
     //fn sell_asset(&self) -> bool;
@@ -52,6 +53,7 @@ pub struct MyBinance<'a> {
     strategy_type: StrategyType,
     trading_style: TradingStyle,
     core_satellite_investment: RefCell<CoreSatellite>,
+    rsi_trading_strategy: RefCell<RsiTradingStrategy>,
 }
 
 impl<'a> MyBinance<'a> {
@@ -121,11 +123,12 @@ impl<'a> MyBinance<'a> {
         warn!("Bought asset at {} price", result.price);
 
         &result.status == FILLED
+        //true
     }
 
     pub fn get_right_asset_adjusted_amount(&self, right_asset_amount: f64) -> f64 {
         let calculated_amount_str = format!("{:.8}", right_asset_amount);
-        calculated_amount_str.parse::<f64>().unwrap().floor()
+        calculated_amount_str.parse::<f64>().unwrap()
     }
 
     pub fn get_right_asset_amount(&self) -> f64 {
@@ -147,19 +150,24 @@ impl<'a> MyBinance<'a> {
     }
 
     pub fn sell_left_asset_of_amount(&self, sell_amount: f64) -> bool {
-        let result = self
-            .account
-            .market_sell(self.pair, sell_amount - 0.001)
-            .unwrap();
+        if sell_amount <= 0.0 {
+            false
+        } else {
+            let result = self
+                .account
+                .market_sell(self.pair, sell_amount - 0.001)
+                .unwrap();
 
-        warn!("Sold asset at {} price", result.price);
+            warn!("Sold asset at {} price", result.price);
 
-        &result.status == FILLED
+            &result.status == FILLED
+            //true
+        }
     }
 
     pub fn get_left_asset_adjusted_amount(&self, left_asset_amount: f64) -> f64 {
         let calculated_amount_str = format!("{:.3}", left_asset_amount);
-        calculated_amount_str.parse::<f64>().unwrap().floor()
+        calculated_amount_str.parse::<f64>().unwrap()
     }
 
     pub fn get_left_asset_amount(&self) -> f64 {
@@ -188,6 +196,7 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
         strategy_type: StrategyType,
         trading_style: TradingStyle,
         core_satellite_investment: RefCell<CoreSatellite>,
+        rsi_trading_strategy: RefCell<RsiTradingStrategy>,
     ) -> Self {
         MyBinance {
             pair: pairs,
@@ -204,10 +213,11 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
             strategy_type: strategy_type,
             trading_style: trading_style,
             core_satellite_investment: core_satellite_investment,
+            rsi_trading_strategy: rsi_trading_strategy,
         }
     }
 
-    fn kline_websocket(&'b self, in_position_for_rsi: &'b mut bool) -> WebSockets<'b> {
+    fn kline_websocket(&'b self) -> WebSockets<'b> {
         let web_socket = WebSockets::new(move |event: WebsocketEvent| {
             if let WebsocketEvent::Kline(kline_event) = event {
                 //println!("candle Close at {} ", kline_event.kline.close);
@@ -216,7 +226,7 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                     kline_event.kline.symbol, kline_event.kline.low, kline_event.kline.high
                 );
                 self.store_prices(kline_event);
-                self.call_trading(in_position_for_rsi);
+                self.call_trading();
 
                 //self.store_prices(kline_event);
             };
@@ -240,7 +250,7 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
             .unwrap()
     }
 
-    fn call_trading(&self, in_position_for_rsi: &mut bool) {
+    fn call_trading(&self) {
         //if let StrategyType::RSI = strategy_type {}
 
         match self.strategy_type {
@@ -258,12 +268,23 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                             let result = self.sell_left_asset(calculated_amount);
 
                             if result {
-                                *in_position_for_rsi = false;
+                                *self
+                                    .rsi_trading_strategy
+                                    .borrow_mut()
+                                    .in_position
+                                    .borrow_mut()
+                                    .get_mut() = false;
                             }
                         }
 
                         TransactionType::Buy => {
-                            if *in_position_for_rsi {
+                            if *self
+                                .rsi_trading_strategy
+                                .borrow_mut()
+                                .in_position
+                                .borrow_mut()
+                                .get_mut()
+                            {
                                 warn!("We are already in position, need to do anything!");
                             } else {
                                 //warn!("We are buy")
@@ -271,7 +292,12 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                                 let result = self.buy_left_asset_with_right(calculated_amount);
 
                                 if result {
-                                    *in_position_for_rsi = true;
+                                    *self
+                                        .rsi_trading_strategy
+                                        .borrow_mut()
+                                        .in_position
+                                        .borrow_mut()
+                                        .get_mut() = true;
                                 }
                             }
                         }

@@ -1,11 +1,12 @@
 use std::cell::RefCell;
+use std::sync::atomic::AtomicBool;
 
 pub struct CoreSatellite {
     // pub initial_amount: f64,
     pub core_trade_amount_percent: f64,
     pub trade_amount_percent: f64,
     pub core_quantity: f64,
-    //pub core_to_trade: &'a mut bool,
+    pub core_to_trade: RefCell<AtomicBool>,
     pub portfolio: f64,
     pub investment: RefCell<Vec<f64>>,
     pub real_time_portfolio_value: RefCell<Vec<f64>>,
@@ -18,7 +19,7 @@ impl<'a> CoreSatellite {
         core_trade_amount_percent: f64,
         trade_amount_percent: f64,
         core_quantity: f64,
-        // core_to_trade: &'a mut bool,
+        core_to_trade: RefCell<AtomicBool>,
         portfolio: f64,
         investment: RefCell<Vec<f64>>,
         real_time_portfolio_value: RefCell<Vec<f64>>,
@@ -29,7 +30,7 @@ impl<'a> CoreSatellite {
             core_trade_amount_percent: core_trade_amount_percent,
             trade_amount_percent: trade_amount_percent,
             core_quantity: core_quantity,
-            //core_to_trade: core_to_trade,
+            core_to_trade: core_to_trade,
             portfolio: portfolio,
             investment: investment,
             real_time_portfolio_value: real_time_portfolio_value,

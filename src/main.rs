@@ -18,12 +18,12 @@ mod utils;
 fn main() {
     load_env();
 
-    //use_rsi_trading_strategy();
+    use_rsi_trading_strategy();
 
-    /**
+    /*
      * Core satellite strategy
      */
-    use_engulfing_trading_strategy();
+    //use_engulfing_trading_strategy();
 }
 
 fn use_rsi_trading_strategy() {
@@ -33,19 +33,20 @@ fn use_rsi_trading_strategy() {
 
     let my_binance: MyBinance = Exchange::new(
         account.unwrap(),
-        RefCell::new(Vec::new()), // opens
-        RefCell::new(Vec::new()), // closes
-        RefCell::new(Vec::new()), // highs
-        RefCell::new(Vec::new()), // lows
-        BNB_BUSD,
-        ONE_MINUTE_KLINE,
-        BNB,
-        0.2,
-        BUSD,
-        1.0,
-        StrategyType::Rsi(true),
-        TradingStyle::CoreSatellite,
-        core_satellite_investment,
+        RefCell::new(Vec::new()),          // opens
+        RefCell::new(Vec::new()),          // closes
+        RefCell::new(Vec::new()),          // highs
+        RefCell::new(Vec::new()),          // lows
+        BNB_BUSD,                          // pair
+        ONE_MINUTE_KLINE,                  // kline
+        BNB,                               // left asset name
+        1.0,                               // left asset percentage
+        BUSD,                              // right asset name
+        0.2,                               // right asset percentage
+        StrategyType::Rsi(true),           // strategy type
+        TradingStyle::CoreSatellite,       // trading style
+        core_satellite_investment,         // Core satellite instance
+        initialize_rsi_trading_strategy(), // Rsi Trading Strategy instance
     );
 
     //let result = my_binance.buy_asset_with_stable();
@@ -54,9 +55,7 @@ fn use_rsi_trading_strategy() {
     // let result = my_binance.sell_asset();
     // warn!("IS the asset sold?? {}", result);
 
-    let in_position_for_rsi: &mut bool = &mut false;
-
-    let mut web_socket = my_binance.kline_websocket(in_position_for_rsi);
+    let mut web_socket = my_binance.kline_websocket();
 
     my_binance.open_websocket_with_pair(&mut web_socket);
     my_binance.close_websocket(&mut web_socket);
@@ -68,24 +67,25 @@ fn use_engulfing_trading_strategy() {
 
     let my_binance_1: MyBinance = Exchange::new(
         account_1.unwrap(),
-        RefCell::new(Vec::new()), // opens
-        RefCell::new(Vec::new()), // closes
-        RefCell::new(Vec::new()), // highs
-        RefCell::new(Vec::new()), // lows
-        BNB_BUSD,
-        ONE_MINUTE_KLINE,
-        BNB,
-        0.2,
-        BUSD,
-        1.0,
-        StrategyType::Engulfing(true),
-        TradingStyle::CoreSatellite,
-        core_satellite_investment,
+        RefCell::new(Vec::new()),          // opens
+        RefCell::new(Vec::new()),          // closes
+        RefCell::new(Vec::new()),          // highs
+        RefCell::new(Vec::new()),          // lows
+        BNB_BUSD,                          // pair
+        ONE_MINUTE_KLINE,                  // kline
+        BNB,                               // left asset name
+        1.0,                               // left asset percentage
+        BUSD,                              // right asset name
+        0.2,                               // right asset percentage
+        StrategyType::Engulfing(true),     // strategy type
+        TradingStyle::CoreSatellite,       // Trading style
+        core_satellite_investment,         // Core Satellite Instance
+        initialize_rsi_trading_strategy(), // Rsi Trading Strategy Instance
     );
 
     let in_position_for_rsi: &mut bool = &mut false;
 
-    let mut web_socket = my_binance_1.kline_websocket(in_position_for_rsi);
+    let mut web_socket = my_binance_1.kline_websocket();
 
     my_binance_1.open_websocket_with_pair(&mut web_socket);
     my_binance_1.close_websocket(&mut web_socket);
@@ -102,4 +102,10 @@ fn initialize_core_satellite_investment() -> RefCell<CoreSatellite> {
         RefCell::new(Vec::new()), // real_time_portfolio_value - I guess this is also for logs
         1.0,                      // money_end -  final amount left
     ))
+}
+
+fn initialize_rsi_trading_strategy() -> RefCell<RsiTradingStrategy> {
+    RefCell::new(RsiTradingStrategy::new(RefCell::new(AtomicBool::new(
+        false,
+    ))))
 }
