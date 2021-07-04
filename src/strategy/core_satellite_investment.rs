@@ -38,7 +38,7 @@ impl<'a> CoreSatellite {
         }
     }
 
-    pub fn log_buy(&mut self, allocated_money: f64, price: f64) {
+    pub fn update_for_buy(&mut self, allocated_money: f64, price: f64) {
         let quantity = allocated_money / price;
         self.money_end = self.money_end - quantity * price;
         self.portfolio += quantity;
@@ -51,7 +51,7 @@ impl<'a> CoreSatellite {
         }
     }
 
-    pub fn log_sell(&mut self, allocated_money: f64, price: f64) {
+    pub fn update_for_sell(&mut self, allocated_money: f64, price: f64) {
         let quantity = allocated_money / price;
         self.money_end += quantity * price;
         self.portfolio -= quantity;

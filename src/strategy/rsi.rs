@@ -18,16 +18,17 @@ impl RsiTradingStrategy {
         }
     }
 
-    pub fn call_rsi_logic(closes: Vec<f64>) -> TransactionType {
+    pub fn call_rsi_logic(&self, closes: Vec<f64>) -> TransactionType {
         info!("No of closes {}", closes.len());
         if closes.len() > RSI_PERIOD.into() {
             let result = Self::rsi(&closes);
+            info!("Contents of RSI array ::");
             display_contents(&result);
             let last_rsi = result.last();
             match last_rsi {
                 Some(res) => {
                     info!("the current RSI is {}", res);
-                    return RsiTradingStrategy::enter_into_position(res);
+                    return self.enter_into_position(res);
                 }
                 None => {
                     info!("no RSI result");
@@ -38,7 +39,7 @@ impl RsiTradingStrategy {
         TransactionType::Hold
     }
 
-    fn enter_into_position(last_rsi: &f64) -> TransactionType {
+    fn enter_into_position(&self, last_rsi: &f64) -> TransactionType {
         if *last_rsi > RSI_OVERBOUGHT {
             return TransactionType::Buy;
         }

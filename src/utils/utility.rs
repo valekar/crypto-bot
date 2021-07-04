@@ -1,9 +1,9 @@
 use dotenv::dotenv;
 use simplelog::*;
+use std::fmt::{Debug, Display, Formatter};
 use std::fs::OpenOptions;
 
-pub fn display_contents(elements: &Vec<f64>) {
-    info!("Contents of array ::");
+pub fn display_contents<T: Display>(elements: &Vec<T>) {
     let mut message: String = "".to_owned();
     for element in elements {
         message.push_str(format!("{} ", element).as_str());
@@ -14,7 +14,7 @@ pub fn display_contents(elements: &Vec<f64>) {
 pub fn load_env() {
     CombinedLogger::init(vec![
         TermLogger::new(
-            LevelFilter::Info,
+            LevelFilter::Warn,
             Config::default(),
             TerminalMode::Mixed,
             ColorChoice::Auto,

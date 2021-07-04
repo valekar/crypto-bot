@@ -1,5 +1,6 @@
+use crate::strategy::engulfing::Engulfing;
 use crate::utils::constants::FILLED;
-use crate::utils::utility::{StrategyType, TradingStyle, TransactionType};
+use crate::utils::utility::{display_contents, StrategyType, TradingStyle, TransactionType};
 use crate::CoreSatellite;
 use crate::RsiTradingStrategy;
 use binance::account::*;
@@ -29,7 +30,7 @@ pub trait Exchange<'b> {
         strategy_type: StrategyType,
         trading_style: TradingStyle,
         core_satellite_investment: RefCell<CoreSatellite>,
-        rsi_trading_strategy: RefCell<RsiTradingStrategy>,
+        rsi_trading_strategy: RsiTradingStrategy,
     ) -> Self;
     fn kline_websocket(&'b self) -> WebSockets<'b>;
     fn get_account() -> Result<Account, Box<dyn Error>>;
@@ -54,7 +55,7 @@ pub struct MyBinance<'a> {
     strategy_type: StrategyType,
     trading_style: TradingStyle,
     core_satellite_investment: RefCell<CoreSatellite>,
-    rsi_trading_strategy: RefCell<RsiTradingStrategy>,
+    rsi_trading_strategy: RsiTradingStrategy,
 }
 
 impl<'a> MyBinance<'a> {
@@ -95,12 +96,16 @@ impl<'a> MyBinance<'a> {
 
     pub fn display_list(&self) {
         info!("List of closes");
-        let mut log_str: String = "".to_owned();
-        for close in self.closes.borrow_mut().iter() {
-            let log_close: String = format!("{}, ", close);
-            log_str.push_str(&log_close);
-        }
-        info!("{}", log_str);
+        display_contents(&self.closes.borrow());
+
+        info!("List of Opens");
+        display_contents(&self.opens.borrow());
+
+        info!("List of Highs");
+        display_contents(&self.highs.borrow());
+
+        info!("List of Lows");
+        display_contents(&self.lows.borrow());
     }
 
     pub fn close_websocket(&self, web_socket: &mut WebSockets<'a>) {
@@ -116,15 +121,16 @@ impl<'a> MyBinance<'a> {
     }
 
     pub fn buy_left_asset_with_amount(&self, buy_amount: f64) -> Result<bool, BinanceContentError> {
-        let result = self
-            .account
-            .market_buy_using_quote_quantity(self.pair, buy_amount)
-            .unwrap();
-
-        warn!("Bought asset at {} price", result.price);
-
-        Ok(&result.status == FILLED)
-        //true
+        // let result = self
+        //     .account
+        //     .market_buy_using_quote_quantity(self.pair, buy_amount)
+        //     .unwrap();
+        // warn!(
+        //     "Bought asset at {} price",
+        //     self.closes.borrow().last().unwrap_or(&0.0)
+        // );
+        // Ok(&result.status == FILLED)
+        Ok(true)
     }
 
     pub fn get_right_asset_adjusted_amount(&self, right_asset_amount: f64) -> f64 {
@@ -160,15 +166,17 @@ impl<'a> MyBinance<'a> {
         if sell_amount <= 0.0 {
             Ok(false)
         } else {
-            let result = self
-                .account
-                .market_sell(self.pair, sell_amount - 0.001)
-                .unwrap();
+            // let result = self
+            //     .account
+            //     .market_sell(self.pair, sell_amount - 0.001)
+            //     .unwrap();
 
-            warn!("Sold asset at {} price", result.price);
-
-            Ok(&result.status == FILLED)
-            //true
+            // warn!(
+            //     "Sold asset at {} price",
+            //     self.closes.borrow().last().unwrap_or(&0.0)
+            // );
+            // Ok(&result.status == FILLED)
+            Ok(true)
         }
     }
 
@@ -203,7 +211,7 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
         strategy_type: StrategyType,
         trading_style: TradingStyle,
         core_satellite_investment: RefCell<CoreSatellite>,
-        rsi_trading_strategy: RefCell<RsiTradingStrategy>,
+        rsi_trading_strategy: RsiTradingStrategy,
     ) -> Self {
         MyBinance {
             pair: pairs,
@@ -263,35 +271,27 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
         match self.strategy_type {
             StrategyType::Rsi(use_in_position) => {
                 warn!("Using IN POSITION RSI Strategy");
-                let transaction_type =
-                    RsiTradingStrategy::call_rsi_logic(self.closes.borrow_mut().to_vec());
+                let transaction_type = self
+                    .rsi_trading_strategy
+                    .call_rsi_logic(self.closes.borrow_mut().to_vec());
 
                 if use_in_position {
                     // use in position logic
 
+                    warn!("In use pos");
                     match transaction_type {
                         TransactionType::Sell => {
                             let calculated_amount = self.get_left_asset_amount();
                             let result = self.sell_left_asset(calculated_amount);
 
                             if result {
-                                *self
-                                    .rsi_trading_strategy
-                                    .borrow_mut()
-                                    .in_position
-                                    .borrow_mut()
-                                    .get_mut() = false;
+                                *self.rsi_trading_strategy.in_position.borrow_mut().get_mut() =
+                                    false;
                             }
                         }
 
                         TransactionType::Buy => {
-                            if *self
-                                .rsi_trading_strategy
-                                .borrow_mut()
-                                .in_position
-                                .borrow_mut()
-                                .get_mut()
-                            {
+                            if *self.rsi_trading_strategy.in_position.borrow_mut().get_mut() {
                                 warn!("We are already in position, need to do anything!");
                             } else {
                                 //warn!("We are buy")
@@ -299,12 +299,8 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                                 let result = self.buy_left_asset_with_right(calculated_amount);
 
                                 if result {
-                                    *self
-                                        .rsi_trading_strategy
-                                        .borrow_mut()
-                                        .in_position
-                                        .borrow_mut()
-                                        .get_mut() = true;
+                                    *self.rsi_trading_strategy.in_position.borrow_mut().get_mut() =
+                                        true;
                                 }
                             }
                         }
@@ -316,7 +312,16 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                 }
             }
             StrategyType::Engulfing(use_first_time_trade) => {
-                if use_first_time_trade {
+                warn!("Using Core Satellite trading style with Engulfing Trading Strategy");
+                if use_first_time_trade
+                    && *self
+                        .core_satellite_investment
+                        .borrow_mut()
+                        .core_to_trade
+                        .borrow_mut()
+                        .get_mut()
+                    && self.closes.borrow().len() > 0
+                {
                     let left_asset_amount = self.get_left_asset_amount();
                     let core_trade_amount = self
                         .core_satellite_investment
@@ -342,12 +347,28 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                                 .core_to_trade
                                 .borrow_mut()
                                 .get_mut() = false;
+
+                            // update core_satellite's values
+                            self.core_satellite_investment.borrow_mut().core_quantity =
+                                self.get_asset_free_balance(self.left_asset_name);
+                            self.core_satellite_investment.borrow_mut().update_for_buy(
+                                core_trade_amount,
+                                *self.closes.borrow().last().unwrap_or(&0.0),
+                            )
                         }
-                        self.core_satellite_investment.borrow_mut().core_quantity =
-                            self.get_asset_free_balance(self.left_asset_name);
                     }
-                    // code here
                 }
+
+                let engulfing_value = Engulfing::engulfing(
+                    self.closes.borrow().to_vec(),
+                    self.opens.borrow().to_vec(),
+                    self.highs.borrow().to_vec(),
+                    self.lows.borrow().to_vec(),
+                );
+
+                display_contents(&engulfing_value.unwrap());
+
+                // code here
             }
         }
     }

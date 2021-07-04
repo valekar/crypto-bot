@@ -23,7 +23,8 @@ fn main() {
     /*
      * Core satellite strategy
      */
-    //use_engulfing_trading_strategy();
+    //
+    use_engulfing_trading_strategy();
 }
 
 fn use_rsi_trading_strategy() {
@@ -104,8 +105,6 @@ fn initialize_core_satellite_investment() -> RefCell<CoreSatellite> {
     ))
 }
 
-fn initialize_rsi_trading_strategy() -> RefCell<RsiTradingStrategy> {
-    RefCell::new(RsiTradingStrategy::new(RefCell::new(AtomicBool::new(
-        false,
-    ))))
+fn initialize_rsi_trading_strategy() -> RsiTradingStrategy {
+    RsiTradingStrategy::new(RefCell::new(AtomicBool::new(false)))
 }
