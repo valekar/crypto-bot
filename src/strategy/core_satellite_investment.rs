@@ -39,7 +39,9 @@ impl<'a> CoreSatellite {
     }
 
     pub fn update_for_buy(&mut self, allocated_money: f64, price: f64) {
+        warn!("Allocated Money {}", allocated_money);
         let quantity = allocated_money / price;
+        warn!("Calculated quantity {}", quantity);
         self.money_end = self.money_end - quantity * price;
         self.portfolio += quantity;
 
@@ -49,6 +51,8 @@ impl<'a> CoreSatellite {
             let last_invested = self.investment.borrow().last().unwrap() + allocated_money;
             self.investment.borrow_mut().push(last_invested);
         }
+
+        self.display_details();
     }
 
     pub fn update_for_sell(&mut self, allocated_money: f64, price: f64) {
@@ -58,6 +62,7 @@ impl<'a> CoreSatellite {
 
         let last_invested = self.investment.borrow().last().unwrap() - allocated_money;
         self.investment.borrow_mut().push(last_invested);
+        self.display_details();
     }
 
     pub fn get_core_trade_amount(&self, amount: f64) -> f64 {
@@ -66,5 +71,11 @@ impl<'a> CoreSatellite {
 
     pub fn get_trade_amount(&self, amount: f64) -> f64 {
         self.trade_amount_percent * amount
+    }
+
+    pub fn display_details(&self) {
+        info!("Core satellite details");
+        info!("Money end {}", self.money_end);
+        info!("Portfolio {}", self.portfolio);
     }
 }

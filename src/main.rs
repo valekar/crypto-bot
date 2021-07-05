@@ -63,6 +63,8 @@ fn use_rsi_trading_strategy() {
 }
 
 fn use_engulfing_trading_strategy() {
+    info!("Using Core Satellite trading style with Engulfing Trading Strategy");
+
     let core_satellite_investment = initialize_core_satellite_investment();
     let account_1 = MyBinance::get_account();
 

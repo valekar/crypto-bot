@@ -35,6 +35,7 @@ pub trait Exchange<'b> {
     fn kline_websocket(&'b self) -> WebSockets<'b>;
     fn get_account() -> Result<Account, Box<dyn Error>>;
     fn call_trading(&'b self);
+    fn call_trading_at_candle_close(&'b self);
     fn get_asset_free_balance(&'b self, asset_name: &str) -> f64;
     //fn buy_asset(&self) -> bool;
     //fn sell_asset(&self) -> bool;
@@ -115,22 +116,27 @@ impl<'a> MyBinance<'a> {
     pub fn buy_left_asset_with_right(&self, calculated_amount: f64) -> bool {
         error!("BUY! BUY! BUY! ");
         let buy_amount: f64 = self.get_right_asset_adjusted_amount(calculated_amount);
-        warn!("Buying {} amount ", buy_amount);
+        warn!("Buying left asset with {} amount of right", buy_amount);
         self.buy_left_asset_with_amount(buy_amount).unwrap_or(false)
         //true
     }
 
-    pub fn buy_left_asset_with_amount(&self, buy_amount: f64) -> Result<bool, BinanceContentError> {
-        // let result = self
-        //     .account
-        //     .market_buy_using_quote_quantity(self.pair, buy_amount)
-        //     .unwrap();
-        // warn!(
-        //     "Bought asset at {} price",
-        //     self.closes.borrow().last().unwrap_or(&0.0)
-        // );
-        // Ok(&result.status == FILLED)
-        Ok(true)
+    fn buy_left_asset_with_amount(&self, buy_amount: f64) -> Result<bool, BinanceContentError> {
+        if buy_amount <= 0.0 {
+            error!("Couldn't buy :'( cause amount is zero or less");
+            Ok(false)
+        } else {
+            let result = self
+                .account
+                .market_buy_using_quote_quantity(self.pair, buy_amount)
+                .unwrap();
+            warn!(
+                "Bought asset at {} price",
+                self.closes.borrow().last().unwrap_or(&0.0)
+            );
+            Ok(&result.status == FILLED)
+            // Ok(true)
+        }
     }
 
     pub fn get_right_asset_adjusted_amount(&self, right_asset_amount: f64) -> f64 {
@@ -162,21 +168,23 @@ impl<'a> MyBinance<'a> {
         //true
     }
 
-    pub fn sell_left_asset_of_amount(&self, sell_amount: f64) -> Result<bool, BinanceContentError> {
+    fn sell_left_asset_of_amount(&self, sell_amount: f64) -> Result<bool, BinanceContentError> {
         if sell_amount <= 0.0 {
+            error!("Couldn't Sell :'( cause amount is zero or less");
+
             Ok(false)
         } else {
-            // let result = self
-            //     .account
-            //     .market_sell(self.pair, sell_amount - 0.001)
-            //     .unwrap();
+            let result = self
+                .account
+                .market_sell(self.pair, sell_amount - 0.001)
+                .unwrap();
 
-            // warn!(
-            //     "Sold asset at {} price",
-            //     self.closes.borrow().last().unwrap_or(&0.0)
-            // );
-            // Ok(&result.status == FILLED)
-            Ok(true)
+            warn!(
+                "Sold asset at {} price",
+                self.closes.borrow().last().unwrap_or(&0.0)
+            );
+            Ok(&result.status == FILLED)
+            //Ok(true)
         }
     }
 
@@ -192,6 +200,24 @@ impl<'a> MyBinance<'a> {
             free_amount, self.left_asset_name
         );
         free_amount * self.left_asset_percent
+    }
+
+    pub fn get_right_trade_amount(&self) -> f64 {
+        let right_asset_amount = self.get_right_asset_amount();
+        self.core_satellite_investment
+            .borrow()
+            .get_trade_amount(right_asset_amount)
+    }
+
+    pub fn get_left_trade_amount(&self) -> f64 {
+        let left_asset_amount = self.get_left_asset_amount();
+        self.core_satellite_investment
+            .borrow()
+            .get_trade_amount(left_asset_amount)
+    }
+
+    pub fn is_final_bar(&self, kline_event: KlineEvent) -> bool {
+        kline_event.kline.is_final_bar
     }
 }
 
@@ -240,10 +266,15 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                     "Symbol: {}, high: {}, low: {}",
                     kline_event.kline.symbol, kline_event.kline.low, kline_event.kline.high
                 );
-                self.store_prices_at_candle_close(kline_event);
-                self.call_trading();
 
-                //self.store_prices(kline_event);
+                let kline_event_1 = kline_event.clone();
+                let kline_event_2 = kline_event.clone();
+
+                self.store_prices_at_candle_close(kline_event_1);
+                self.call_trading();
+                if self.is_final_bar(kline_event_2) {
+                    self.call_trading_at_candle_close();
+                }
             };
             Ok(())
         });
@@ -266,99 +297,104 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
     }
 
     fn call_trading(&self) {
-        //if let StrategyType::RSI = strategy_type {}
+        if let StrategyType::Rsi(use_in_position) = self.strategy_type {
+            warn!("Using IN POSITION RSI Strategy");
+            let transaction_type = self
+                .rsi_trading_strategy
+                .call_rsi_logic(self.closes.borrow_mut().to_vec());
 
-        match self.strategy_type {
-            StrategyType::Rsi(use_in_position) => {
-                warn!("Using IN POSITION RSI Strategy");
-                let transaction_type = self
-                    .rsi_trading_strategy
-                    .call_rsi_logic(self.closes.borrow_mut().to_vec());
+            if use_in_position {
+                // use in position logic
 
-                if use_in_position {
-                    // use in position logic
+                warn!("In use pos");
+                match transaction_type {
+                    TransactionType::Sell => {
+                        let calculated_amount = self.get_left_asset_amount();
+                        let result = self.sell_left_asset(calculated_amount);
 
-                    warn!("In use pos");
-                    match transaction_type {
-                        TransactionType::Sell => {
-                            let calculated_amount = self.get_left_asset_amount();
-                            let result = self.sell_left_asset(calculated_amount);
+                        if result {
+                            *self.rsi_trading_strategy.in_position.borrow_mut().get_mut() = false;
+                        }
+                    }
+
+                    TransactionType::Buy => {
+                        if *self.rsi_trading_strategy.in_position.borrow_mut().get_mut() {
+                            warn!("We are already in position, need to do anything!");
+                        } else {
+                            //warn!("We are buy")
+                            let calculated_amount = self.get_right_asset_amount();
+                            let result = self.buy_left_asset_with_right(calculated_amount);
 
                             if result {
                                 *self.rsi_trading_strategy.in_position.borrow_mut().get_mut() =
-                                    false;
+                                    true;
                             }
                         }
-
-                        TransactionType::Buy => {
-                            if *self.rsi_trading_strategy.in_position.borrow_mut().get_mut() {
-                                warn!("We are already in position, need to do anything!");
-                            } else {
-                                //warn!("We are buy")
-                                let calculated_amount = self.get_right_asset_amount();
-                                let result = self.buy_left_asset_with_right(calculated_amount);
-
-                                if result {
-                                    *self.rsi_trading_strategy.in_position.borrow_mut().get_mut() =
-                                        true;
-                                }
-                            }
-                        }
-
-                        _ => {}
                     }
-                } else {
-                    //continous RSI
+
+                    _ => {}
+                }
+            } else {
+                //continous RSI
+            }
+        }
+    }
+
+    fn call_trading_at_candle_close(&self) {
+        // if kline_event.kline.is_final_bar {
+        if let StrategyType::Engulfing(use_first_time_trade) = self.strategy_type {
+            if use_first_time_trade
+                && *self
+                    .core_satellite_investment
+                    .borrow_mut()
+                    .core_to_trade
+                    .borrow_mut()
+                    .get_mut()
+                && self.closes.borrow().len() > 0
+            {
+                warn!("Using first time trading (Core to Trade)");
+                let right_asset_amount = self.get_right_asset_amount();
+                warn!("Right asset amount {}", right_asset_amount);
+                let core_trade_amount = self
+                    .core_satellite_investment
+                    .borrow()
+                    .get_core_trade_amount(right_asset_amount);
+
+                if *self
+                    .core_satellite_investment
+                    .borrow_mut()
+                    .core_to_trade
+                    .borrow_mut()
+                    .get_mut()
+                {
+                    let result = self.buy_left_asset_with_right(core_trade_amount);
+                    if result {
+                        *self
+                            .core_satellite_investment
+                            .borrow_mut()
+                            .core_to_trade
+                            .borrow_mut()
+                            .get_mut() = false;
+
+                        // update core_satellite's values
+                        self.core_satellite_investment.borrow_mut().core_quantity =
+                            self.get_asset_free_balance(self.left_asset_name);
+                        self.core_satellite_investment.borrow_mut().update_for_buy(
+                            core_trade_amount,
+                            *self.closes.borrow().last().unwrap_or(&0.0),
+                        )
+                    }
                 }
             }
-            StrategyType::Engulfing(use_first_time_trade) => {
-                warn!("Using Core Satellite trading style with Engulfing Trading Strategy");
-                if use_first_time_trade
-                    && *self
-                        .core_satellite_investment
-                        .borrow_mut()
-                        .core_to_trade
-                        .borrow_mut()
-                        .get_mut()
-                    && self.closes.borrow().len() > 0
-                {
-                    let left_asset_amount = self.get_left_asset_amount();
-                    let core_trade_amount = self
-                        .core_satellite_investment
-                        .borrow()
-                        .get_core_trade_amount(left_asset_amount);
-                    let trade_amount = self
-                        .core_satellite_investment
-                        .borrow()
-                        .get_trade_amount(left_asset_amount);
 
-                    if *self
-                        .core_satellite_investment
-                        .borrow_mut()
-                        .core_to_trade
-                        .borrow_mut()
-                        .get_mut()
-                    {
-                        let result = self.buy_left_asset_with_right(core_trade_amount);
-                        if result {
-                            *self
-                                .core_satellite_investment
-                                .borrow_mut()
-                                .core_to_trade
-                                .borrow_mut()
-                                .get_mut() = false;
-
-                            // update core_satellite's values
-                            self.core_satellite_investment.borrow_mut().core_quantity =
-                                self.get_asset_free_balance(self.left_asset_name);
-                            self.core_satellite_investment.borrow_mut().update_for_buy(
-                                core_trade_amount,
-                                *self.closes.borrow().last().unwrap_or(&0.0),
-                            )
-                        }
-                    }
-                }
-
+            if self.closes.borrow().len() > 0
+                && !*self
+                    .core_satellite_investment
+                    .borrow()
+                    .core_to_trade
+                    .borrow_mut()
+                    .get_mut()
+            {
                 let engulfing_value = Engulfing::engulfing(
                     self.closes.borrow().to_vec(),
                     self.opens.borrow().to_vec(),
@@ -366,10 +402,53 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                     self.lows.borrow().to_vec(),
                 );
 
-                display_contents(&engulfing_value.unwrap());
+                let engulfing_list = &engulfing_value.unwrap();
+                display_contents(&engulfing_list);
 
-                // code here
+                let last_engulfing = engulfing_list.last().unwrap_or(&0);
+
+                let amount = (self.get_right_trade_amount() * (*last_engulfing as f64)) / 100.0;
+
+                let port_value = (self.core_satellite_investment.borrow().portfolio
+                    - self.core_satellite_investment.borrow().core_quantity)
+                    * self.closes.borrow().last().unwrap();
+
+                let mut trade_amount = amount - port_value;
+
+                if *last_engulfing == 0 {
+                    trade_amount = 0.0;
+                }
+                let money_end = self.core_satellite_investment.borrow().money_end;
+                let portfolio = self.core_satellite_investment.borrow().portfolio;
+                self.core_satellite_investment
+                    .borrow_mut()
+                    .real_time_portfolio_value
+                    .borrow_mut()
+                    .push(money_end + portfolio);
+
+                warn!(
+                    "The last engulfing value is {} and recommended exposure is {}",
+                    last_engulfing, trade_amount
+                );
+                warn!(
+                    "Real time portfolio value is {}",
+                    self.core_satellite_investment
+                        .borrow()
+                        .real_time_portfolio_value
+                        .borrow()
+                        .last()
+                        .unwrap()
+                );
+
+                if trade_amount > 0.0 {
+                    self.buy_left_asset_with_right(trade_amount);
+                } else if trade_amount < 0.0 {
+                    self.sell_left_asset(-trade_amount);
+                } else {
+                    //
+                }
             }
         }
+        //}
     }
 }
