@@ -6,6 +6,7 @@ use crate::RsiTradingStrategy;
 use binance::account::*;
 use binance::api::*;
 use binance::errors::BinanceContentError;
+use binance::general::*;
 use binance::model::KlineEvent;
 use binance::websockets::*;
 use log::{info, warn};
@@ -13,6 +14,24 @@ use std::cell::RefCell;
 use std::env;
 use std::error::Error;
 use std::sync::atomic::AtomicBool;
+
+pub struct Asset<'b> {
+    pub name: &'b str,
+    price_percent: f64,
+    precision: usize,
+    min_qty: f64,
+}
+
+impl<'b> Asset<'b> {
+    pub fn new(name: &'b str, price_percent: f64, precision: usize, min_qty: f64) -> Self {
+        Self {
+            name: name,
+            price_percent: price_percent,
+            precision: precision,
+            min_qty: min_qty,
+        }
+    }
+}
 
 pub trait Exchange<'b> {
     fn new(
@@ -23,10 +42,8 @@ pub trait Exchange<'b> {
         lows: RefCell<Vec<f64>>,
         pairs: &'b str,
         klines: &'b str,
-        left_asset_name: &'b str,
-        left_asset_percent: f64,
-        right_asset_name: &'b str,
-        right_asset_percent: f64,
+        base_asset: Asset<'b>,
+        quote_asset: Asset<'b>,
         strategy_type: StrategyType,
         trading_style: TradingStyle,
         core_satellite_investment: RefCell<CoreSatellite>,
@@ -37,6 +54,9 @@ pub trait Exchange<'b> {
     fn call_trading(&'b self);
     fn call_trading_at_candle_close(&'b self);
     fn get_asset_free_balance(&'b self, asset_name: &str) -> f64;
+    fn get_general() -> Result<General, Box<dyn Error>>;
+    fn get_base_asset_precision(&'b self);
+    fn set_initial_trading_amounts(&'b self);
     //fn buy_asset(&self) -> bool;
     //fn sell_asset(&self) -> bool;
 }
@@ -49,10 +69,8 @@ pub struct MyBinance<'a> {
     highs: RefCell<Vec<f64>>,
     lows: RefCell<Vec<f64>>,
     account: Account,
-    left_asset_name: &'a str,
-    left_asset_percent: f64,
-    right_asset_name: &'a str,
-    right_asset_percent: f64,
+    base_asset: Asset<'a>,
+    quote_asset: Asset<'a>,
     strategy_type: StrategyType,
     trading_style: TradingStyle,
     core_satellite_investment: RefCell<CoreSatellite>,
@@ -95,7 +113,7 @@ impl<'a> MyBinance<'a> {
         }
     }
 
-    pub fn display_list(&self) {
+    fn display_list(&self) {
         info!("List of closes");
         display_contents(&self.closes.borrow());
 
@@ -113,17 +131,18 @@ impl<'a> MyBinance<'a> {
         web_socket.disconnect().unwrap();
     }
 
-    pub fn buy_left_asset_with_right(&self, calculated_amount: f64) -> bool {
+    fn buy_base_asset_with_right(&self, calculated_amount: f64) -> bool {
         error!("BUY! BUY! BUY! ");
-        let buy_amount: f64 = self.get_right_asset_adjusted_amount(calculated_amount);
+        let buy_amount: f64 = self.get_quote_asset_adjusted_amount(calculated_amount);
         warn!("Buying left asset with {} amount of right", buy_amount);
-        self.buy_left_asset_with_amount(buy_amount).unwrap_or(false)
+        self.buy_base_asset_with_amount(buy_amount).unwrap_or(false)
         //true
     }
 
-    fn buy_left_asset_with_amount(&self, buy_amount: f64) -> Result<bool, BinanceContentError> {
-        if buy_amount <= 0.0 {
-            error!("Couldn't buy :'( cause amount is zero or less");
+    fn buy_base_asset_with_amount(&self, buy_amount: f64) -> Result<bool, BinanceContentError> {
+        if buy_amount <= 0.0 || buy_amount <= self.quote_asset.min_qty {
+            error!("The buy amount is {} ", buy_amount);
+            error!("Couldn't buy :'( cause amount is zero or less or it doesn't meet minimum amount requirement to buy ");
             Ok(false)
         } else {
             let result = self
@@ -139,8 +158,13 @@ impl<'a> MyBinance<'a> {
         }
     }
 
-    pub fn get_right_asset_adjusted_amount(&self, right_asset_amount: f64) -> f64 {
-        let calculated_amount_str = format!("{:.8}", right_asset_amount);
+    fn get_quote_asset_adjusted_amount(&self, quote_asset_amount: f64) -> f64 {
+        let calculated_amount_str = format!(
+            "{:.precision$}",
+            quote_asset_amount,
+            precision = self.quote_asset.precision as usize
+        );
+
         match calculated_amount_str.parse::<f64>() {
             Ok(result) => result,
             Err(e) => {
@@ -150,34 +174,32 @@ impl<'a> MyBinance<'a> {
         }
     }
 
-    pub fn get_right_asset_amount(&self) -> f64 {
-        let free_amount = self.get_asset_free_balance(self.right_asset_name);
+    fn get_quote_asset_amount(&self) -> f64 {
+        let free_amount = self.get_asset_free_balance(self.quote_asset.name);
         info!(
             " My account balance {}, Buying the asset using {}",
-            free_amount, self.right_asset_name
+            free_amount, self.quote_asset.name
         );
-        free_amount * self.right_asset_percent
+        free_amount * self.quote_asset.price_percent
     }
 
-    pub fn sell_left_asset(&self, calculated_amount: f64) -> bool {
-        error!("Sell! Sell! Sell!");
-        let sell_amount: f64 = self.get_left_asset_adjusted_amount(calculated_amount);
-        warn!("Selling {} amount ", sell_amount);
-
-        self.sell_left_asset_of_amount(sell_amount).unwrap_or(false)
-        //true
+    fn get_base_asset_adjusted_amount(&self, base_asset_amount: f64) -> f64 {
+        let calculated_amount_str = format!(
+            "{:.precision$}",
+            base_asset_amount,
+            precision = self.base_asset.precision as usize
+        );
+        //let calculated_amount_str = format!("{:.3}", base_asset_amount);
+        calculated_amount_str.parse::<f64>().unwrap()
     }
-
-    fn sell_left_asset_of_amount(&self, sell_amount: f64) -> Result<bool, BinanceContentError> {
-        if sell_amount <= 0.0 {
-            error!("Couldn't Sell :'( cause amount is zero or less");
+    fn sell_base_asset_of_amount(&self, sell_amount: f64) -> Result<bool, BinanceContentError> {
+        if sell_amount <= 0.0 || sell_amount <= self.base_asset.min_qty {
+            error!("The sell amount is {} ", sell_amount);
+            error!("Couldn't Sell :'( cause amount is zero or less or minimum order quantity for the exchange");
 
             Ok(false)
         } else {
-            let result = self
-                .account
-                .market_sell(self.pair, sell_amount - 0.001)
-                .unwrap();
+            let result = self.account.market_sell(self.pair, sell_amount).unwrap();
 
             warn!(
                 "Sold asset at {} price",
@@ -187,36 +209,25 @@ impl<'a> MyBinance<'a> {
             //Ok(true)
         }
     }
+    fn sell_base_asset(&self, calculated_amount: f64) -> bool {
+        error!("Sell! Sell! Sell!");
+        let sell_amount: f64 = self.get_base_asset_adjusted_amount(calculated_amount);
+        warn!("Selling {} amount ", sell_amount);
 
-    pub fn get_left_asset_adjusted_amount(&self, left_asset_amount: f64) -> f64 {
-        let calculated_amount_str = format!("{:.3}", left_asset_amount);
-        calculated_amount_str.parse::<f64>().unwrap()
+        self.sell_base_asset_of_amount(sell_amount).unwrap_or(false)
+        //true
     }
 
-    pub fn get_left_asset_amount(&self) -> f64 {
-        let free_amount = self.get_asset_free_balance(self.left_asset_name);
+    fn get_base_asset_amount(&self) -> f64 {
+        let free_amount = self.get_asset_free_balance(self.base_asset.name);
         info!(
             " My account balance {}, Asset name is {}",
-            free_amount, self.left_asset_name
+            free_amount, self.base_asset.name
         );
-        free_amount * self.left_asset_percent
+        free_amount * self.base_asset.price_percent
     }
 
-    pub fn get_right_trade_amount(&self) -> f64 {
-        let right_asset_amount = self.get_right_asset_amount();
-        self.core_satellite_investment
-            .borrow()
-            .get_trade_amount(right_asset_amount)
-    }
-
-    pub fn get_left_trade_amount(&self) -> f64 {
-        let left_asset_amount = self.get_left_asset_amount();
-        self.core_satellite_investment
-            .borrow()
-            .get_trade_amount(left_asset_amount)
-    }
-
-    pub fn is_final_bar(&self, kline_event: KlineEvent) -> bool {
+    fn is_final_bar(&self, kline_event: KlineEvent) -> bool {
         kline_event.kline.is_final_bar
     }
 }
@@ -230,10 +241,8 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
         lows: RefCell<Vec<f64>>,
         pairs: &'b str,
         klines: &'b str,
-        left_asset_name: &'b str,
-        left_asset_percent: f64,
-        right_asset_name: &'b str,
-        right_asset_percent: f64,
+        base_asset: Asset<'b>,
+        quote_asset: Asset<'b>,
         strategy_type: StrategyType,
         trading_style: TradingStyle,
         core_satellite_investment: RefCell<CoreSatellite>,
@@ -247,10 +256,8 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
             highs: highs,
             lows: lows,
             account: account,
-            left_asset_name: left_asset_name,
-            left_asset_percent: left_asset_percent,
-            right_asset_name: right_asset_name,
-            right_asset_percent: right_asset_percent,
+            base_asset: base_asset,
+            quote_asset: quote_asset,
             strategy_type: strategy_type,
             trading_style: trading_style,
             core_satellite_investment: core_satellite_investment,
@@ -287,6 +294,14 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
         Ok(Binance::new(api_key, api_secret))
     }
 
+    fn get_general() -> Result<General, Box<dyn Error>> {
+        Ok(Binance::new(None, None))
+    }
+
+    fn get_base_asset_precision(&'b self) {
+        //let general: General = Exchange::get_general().unwrap();
+    }
+
     fn get_asset_free_balance(&'b self, asset_name: &str) -> f64 {
         self.account
             .get_balance(asset_name)
@@ -294,6 +309,14 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
             .free
             .parse::<f64>()
             .unwrap()
+
+        //self.account.
+    }
+
+    fn set_initial_trading_amounts(&'b self) {
+        self.core_satellite_investment
+            .borrow_mut()
+            .set_trading_amounts(self.get_asset_free_balance(self.quote_asset.name));
     }
 
     fn call_trading(&self) {
@@ -309,8 +332,8 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                 warn!("In use pos");
                 match transaction_type {
                     TransactionType::Sell => {
-                        let calculated_amount = self.get_left_asset_amount();
-                        let result = self.sell_left_asset(calculated_amount);
+                        let calculated_amount = self.get_base_asset_amount();
+                        let result = self.sell_base_asset(calculated_amount);
 
                         if result {
                             *self.rsi_trading_strategy.in_position.borrow_mut().get_mut() = false;
@@ -322,8 +345,8 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                             warn!("We are already in position, need to do anything!");
                         } else {
                             //warn!("We are buy")
-                            let calculated_amount = self.get_right_asset_amount();
-                            let result = self.buy_left_asset_with_right(calculated_amount);
+                            let calculated_amount = self.get_quote_asset_amount();
+                            let result = self.buy_base_asset_with_right(calculated_amount);
 
                             if result {
                                 *self.rsi_trading_strategy.in_position.borrow_mut().get_mut() =
@@ -353,12 +376,9 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                 && self.closes.borrow().len() > 0
             {
                 warn!("Using first time trading (Core to Trade)");
-                let right_asset_amount = self.get_right_asset_amount();
-                warn!("Right asset amount {}", right_asset_amount);
-                let core_trade_amount = self
-                    .core_satellite_investment
-                    .borrow()
-                    .get_core_trade_amount(right_asset_amount);
+                let quote_asset_amount = self.get_quote_asset_amount();
+                warn!("Right asset amount {}", quote_asset_amount);
+                let core_trade_amount = self.core_satellite_investment.borrow().core_trade_amount;
 
                 if *self
                     .core_satellite_investment
@@ -367,7 +387,7 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                     .borrow_mut()
                     .get_mut()
                 {
-                    let result = self.buy_left_asset_with_right(core_trade_amount);
+                    let result = self.buy_base_asset_with_right(core_trade_amount);
                     if result {
                         *self
                             .core_satellite_investment
@@ -378,11 +398,11 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
 
                         // update core_satellite's values
                         self.core_satellite_investment.borrow_mut().core_quantity =
-                            self.get_asset_free_balance(self.left_asset_name);
+                            self.get_asset_free_balance(self.base_asset.name);
                         self.core_satellite_investment.borrow_mut().update_for_buy(
                             core_trade_amount,
                             *self.closes.borrow().last().unwrap_or(&0.0),
-                        )
+                        );
                     }
                 }
             }
@@ -407,13 +427,29 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
 
                 let last_engulfing = engulfing_list.last().unwrap_or(&0);
 
-                let amount = (self.get_right_trade_amount() * (*last_engulfing as f64)) / 100.0;
+                let amount = (self.core_satellite_investment.borrow().trade_amount
+                    * (*last_engulfing as f64))
+                    / 100.0;
+                let last_close_price = *self.closes.borrow().last().unwrap();
 
                 let port_value = (self.core_satellite_investment.borrow().portfolio
                     - self.core_satellite_investment.borrow().core_quantity)
-                    * self.closes.borrow().last().unwrap();
+                    * last_close_price;
 
                 let mut trade_amount = amount - port_value;
+
+                // warn!("last close {}", last_close_price);
+                // warn!(
+                //     "portfolio {}",
+                //     self.core_satellite_investment.borrow().portfolio
+                // );
+                // warn!("trade_amount {}", trade_amount);
+                // warn!("amount {}", amount);
+                // warn!("port_value {}", port_value);
+                // warn!(
+                //     "core_quantity {}",
+                //     self.core_satellite_investment.borrow().core_quantity
+                // );
 
                 if *last_engulfing == 0 {
                     trade_amount = 0.0;
@@ -424,7 +460,7 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                     .borrow_mut()
                     .real_time_portfolio_value
                     .borrow_mut()
-                    .push(money_end + portfolio);
+                    .push(money_end + portfolio * last_close_price);
 
                 warn!(
                     "The last engulfing value is {} and recommended exposure is {}",
@@ -441,11 +477,23 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
                 );
 
                 if trade_amount > 0.0 {
-                    self.buy_left_asset_with_right(trade_amount);
+                    self.buy_base_asset_with_right(trade_amount);
+                    self.core_satellite_investment
+                        .borrow_mut()
+                        .update_for_buy(trade_amount, *self.closes.borrow().last().unwrap_or(&0.0));
                 } else if trade_amount < 0.0 {
-                    self.sell_left_asset(-trade_amount);
+                    let base_asset_amount = self.get_base_asset_amount();
+                    let calculate_base_amount =
+                        base_asset_amount * (-trade_amount / last_close_price);
+                    //let calculate_base_amount = -trade_amount / last_close_price;
+                    self.sell_base_asset(calculate_base_amount);
+
+                    self.core_satellite_investment.borrow_mut().update_for_sell(
+                        trade_amount,
+                        *self.closes.borrow().last().unwrap_or(&0.0),
+                    );
                 } else {
-                    //
+                    // don't do anything!
                 }
             }
         }

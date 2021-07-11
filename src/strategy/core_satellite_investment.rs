@@ -3,7 +3,9 @@ use std::sync::atomic::AtomicBool;
 
 pub struct CoreSatellite {
     // pub initial_amount: f64,
+    pub core_trade_amount: f64,
     pub core_trade_amount_percent: f64,
+    pub trade_amount: f64,
     pub trade_amount_percent: f64,
     pub core_quantity: f64,
     pub core_to_trade: RefCell<AtomicBool>,
@@ -16,7 +18,9 @@ pub struct CoreSatellite {
 impl<'a> CoreSatellite {
     pub fn new(
         //initial_amount: f64,
+        core_trade_amount: f64,
         core_trade_amount_percent: f64,
+        trade_amount: f64,
         trade_amount_percent: f64,
         core_quantity: f64,
         core_to_trade: RefCell<AtomicBool>,
@@ -27,7 +31,9 @@ impl<'a> CoreSatellite {
     ) -> Self {
         CoreSatellite {
             //initial_amount: initial_amount,
+            core_trade_amount: core_trade_amount,
             core_trade_amount_percent: core_trade_amount_percent,
+            trade_amount: trade_amount,
             trade_amount_percent: trade_amount_percent,
             core_quantity: core_quantity,
             core_to_trade: core_to_trade,
@@ -65,17 +71,26 @@ impl<'a> CoreSatellite {
         self.display_details();
     }
 
-    pub fn get_core_trade_amount(&self, amount: f64) -> f64 {
-        self.core_trade_amount_percent * amount
-    }
-
-    pub fn get_trade_amount(&self, amount: f64) -> f64 {
-        self.trade_amount_percent * amount
-    }
-
     pub fn display_details(&self) {
         info!("Core satellite details");
         info!("Money end {}", self.money_end);
         info!("Portfolio {}", self.portfolio);
+        info!("Trade amount {}", self.trade_amount);
+        info!("Portfolio {}", self.portfolio);
+        info!("Core Quantity {}", self.core_quantity);
+    }
+
+    pub fn set_trading_amounts(&mut self, free_balance: f64) {
+        warn!(
+            "Current initial amounts are 1 --> Core to Trade {} ,, 2 -->  Trade Amount {} ",
+            self.core_trade_amount, self.trade_amount
+        );
+        self.money_end = free_balance;
+        self.core_trade_amount = self.core_trade_amount_percent * free_balance;
+        self.trade_amount = self.trade_amount_percent * free_balance;
+        warn!(
+            "Amounts after settings are 1 -->  Core to Trade {},, 2 --> Trade Amount {} ",
+            self.core_trade_amount, self.trade_amount
+        );
     }
 }

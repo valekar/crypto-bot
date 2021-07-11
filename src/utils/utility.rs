@@ -1,6 +1,6 @@
 use dotenv::dotenv;
 use simplelog::*;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::Display;
 use std::fs::OpenOptions;
 
 pub fn display_contents<T: Display>(elements: &Vec<T>) {
