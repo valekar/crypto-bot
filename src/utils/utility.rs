@@ -1,19 +1,20 @@
 use dotenv::dotenv;
 use simplelog::*;
+use std::fmt::Display;
 use std::fs::OpenOptions;
 
-pub fn display_contents(elements: &Vec<f64>) {
-    info!("Contents of array ::");
+pub fn display_contents<T: Display>(elements: &Vec<T>) {
+    let mut message: String = "".to_owned();
     for element in elements {
-        info!(" {}", element)
+        message.push_str(format!("{} ", element).as_str());
     }
-    info!(" ")
+    info!("{} ", message);
 }
 
 pub fn load_env() {
     CombinedLogger::init(vec![
         TermLogger::new(
-            LevelFilter::Info,
+            LevelFilter::Warn,
             Config::default(),
             TerminalMode::Mixed,
             ColorChoice::Auto,
@@ -75,4 +76,20 @@ mod paper {
 
         (portfolio, money_end, investment)
     }
+}
+
+#[derive(Clone)]
+pub enum StrategyType {
+    Rsi(bool),
+    Engulfing(bool),
+}
+#[derive(PartialEq)]
+pub enum TransactionType {
+    Sell,
+    Buy,
+    Hold,
+}
+
+pub enum TradingStyle {
+    CoreSatellite,
 }

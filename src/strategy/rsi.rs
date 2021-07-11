@@ -1,62 +1,53 @@
-use crate::exchange::my_binance::MyBinance;
-use crate::utils::utility::display_contents;
+use crate::utils::utility::{display_contents, TransactionType};
+use std::cell::RefCell;
+use std::sync::atomic::AtomicBool;
 use ta_lib_wrapper::{TA_RetCode, TA_RSI};
 
-pub const RSI_PERIOD: u8 = 14;
+pub const RSI_PERIOD: u8 = 4;
 pub const RSI_OVERBOUGHT: f64 = 70.0;
 pub const RSI_OVERSOLD: f64 = 30.0;
 
-pub enum StrategyType {
-    RSI,
-    ENGULFING,
+pub struct RsiTradingStrategy {
+    pub in_position: RefCell<AtomicBool>,
 }
 
-pub struct RsiTradingStrategy<'a> {
-    my_binance: Option<&'a MyBinance<'a>>,
-}
-
-impl<'a> RsiTradingStrategy<'a> {
-    pub fn new(my_binance: Option<&'a MyBinance<'a>>) -> Self {
+impl RsiTradingStrategy {
+    pub fn new(in_position: RefCell<AtomicBool>) -> Self {
         Self {
-            my_binance: my_binance,
+            in_position: in_position,
         }
     }
-    pub fn start_rsi_logic_for_binance(&self, closes: Vec<f64>, in_position: &mut bool) {
+
+    pub fn call_rsi_logic(&self, closes: Vec<f64>) -> TransactionType {
+        info!("No of closes {}", closes.len());
         if closes.len() > RSI_PERIOD.into() {
             let result = Self::rsi(&closes);
+            info!("Contents of RSI array ::");
             display_contents(&result);
             let last_rsi = result.last();
             match last_rsi {
                 Some(res) => {
                     info!("the current RSI is {}", res);
-                    self.enter_into_position(res, in_position);
+                    return self.enter_into_position(res);
                 }
                 None => {
                     info!("no RSI result");
                 }
             }
         }
+
+        TransactionType::Hold
     }
 
-    fn enter_into_position(&self, last_rsi: &f64, in_position: &mut bool) {
+    fn enter_into_position(&self, last_rsi: &f64) -> TransactionType {
         if *last_rsi > RSI_OVERBOUGHT {
-            let status = self.my_binance.unwrap().buy_asset_with();
-
-            if status {
-                *in_position = false;
-            }
+            return TransactionType::Buy;
         }
         if *last_rsi < RSI_OVERSOLD {
-            if *in_position {
-                warn!("We have already bought, no need to do anything :) ");
-            } else {
-                let status = self.my_binance.unwrap().sell_asset();
-
-                if status {
-                    *in_position = true;
-                }
-            }
+            return TransactionType::Sell;
         }
+
+        TransactionType::Hold
     }
 
     fn rsi(close_prices: &Vec<f64>) -> Vec<f64> {
