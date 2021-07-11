@@ -438,18 +438,18 @@ impl<'b> Exchange<'b> for MyBinance<'b> {
 
                 let mut trade_amount = amount - port_value;
 
-                // warn!("last close {}", last_close_price);
-                // warn!(
-                //     "portfolio {}",
-                //     self.core_satellite_investment.borrow().portfolio
-                // );
-                // warn!("trade_amount {}", trade_amount);
-                // warn!("amount {}", amount);
-                // warn!("port_value {}", port_value);
-                // warn!(
-                //     "core_quantity {}",
-                //     self.core_satellite_investment.borrow().core_quantity
-                // );
+                info!("last close {}", last_close_price);
+                info!(
+                    "portfolio {}",
+                    self.core_satellite_investment.borrow().portfolio
+                );
+                info!("trade_amount {}", trade_amount);
+                info!("amount {}", amount);
+                info!("port_value {}", port_value);
+                info!(
+                    "core_quantity {}",
+                    self.core_satellite_investment.borrow().core_quantity
+                );
 
                 if *last_engulfing == 0 {
                     trade_amount = 0.0;
